@@ -1,21 +1,39 @@
 import React, { useEffect, useRef, useState } from "react";
 import { makeWalls } from "./game/maze.js";
 import { makePlayer } from "./game/entities.js";
-import { createInitialState, update } from "./game/update.js";
+import { createInitialState, update, useMedkit } from "./game/update.js";
+import {
+  TEXTURE_OPTIONS,
+  SOUND_OPTIONS,
+  createAssetStore,
+  SOUND_KEYS,
+  SOUND_DEFAULT_GAINS,
+} from "./game/assets.js";
 import { draw } from "./game/draw.js";
 
 export default function App() {
   const canvasRef = useRef(null);
   const stateRef = useRef(null);
+  const assetsRef = useRef(createAssetStore());
+  const audioCtxRef = useRef(null);
+  const ambientGainRef = useRef(null);
+  const ambientSourceRef = useRef(null);
+  const melodyRef = useRef(null);
+  const melodyStateRef = useRef({ timer: 0, step: 0 });
+  const audioApiRef = useRef({ play: () => {} });
 
   const [mode, setMode] = useState("start"); // start | play | pause | dead
   const [running, setRunning] = useState(false);
   const [flash, setFlash] = useState("");
   const [best, setBest] = useState(0);
+  const [showAssetPanel, setShowAssetPanel] = useState(false);
+  const [, forceAssetsTick] = useState(0);
 
   // создаём стейт один раз
   if (!stateRef.current) {
-    stateRef.current = createInitialState(makeWalls, makePlayer);
+    stateRef.current = createInitialState(makeWalls, makePlayer, assetsRef.current);
+  } else if (stateRef.current.assets !== assetsRef.current) {
+    stateRef.current.assets = assetsRef.current;
   }
 
   // подгружаем рекорд
@@ -45,11 +63,232 @@ export default function App() {
   };
 
   const restart = () => {
-    stateRef.current = createInitialState(makeWalls, makePlayer);
+    stateRef.current = createInitialState(makeWalls, makePlayer, assetsRef.current);
     setMode("play");
     setRunning(true);
     setFlash("");
   };
+
+  const stopAmbientSource = () => {
+    const current = ambientSourceRef.current;
+    if (current?.node) {
+      try {
+        current.node.stop();
+      } catch (err) {}
+    }
+    ambientSourceRef.current = null;
+  };
+
+  const startDefaultAmbient = (ctx) => {
+    if (!ambientGainRef.current) return;
+    const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.08;
+    }
+    const noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+    noiseSource.loop = true;
+    noiseSource.connect(ambientGainRef.current);
+    noiseSource.start();
+    ambientSourceRef.current = { node: noiseSource, type: "noise" };
+  };
+
+  const ensureAudio = () => {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioCtxRef.current) {
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+
+      const ambientGain = ctx.createGain();
+      ambientGain.gain.value = 0.05;
+      ambientGain.connect(ctx.destination);
+      ambientGainRef.current = ambientGain;
+      startDefaultAmbient(ctx);
+
+      const melodyGain = ctx.createGain();
+      melodyGain.gain.value = 0.0;
+      melodyGain.connect(ctx.destination);
+      const melodyOsc = ctx.createOscillator();
+      melodyOsc.type = "triangle";
+      melodyOsc.frequency.value = 320;
+      melodyOsc.connect(melodyGain);
+      melodyOsc.start();
+      melodyRef.current = { type: "default", node: melodyOsc, gain: melodyGain };
+      melodyStateRef.current = { timer: 0, step: 0 };
+    } else if (audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  };
+
+  const setAmbientBuffer = (buffer) => {
+    const ctx = ensureAudio();
+    if (!ctx || !ambientGainRef.current) return;
+    stopAmbientSource();
+    if (buffer) {
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(ambientGainRef.current);
+      source.start();
+      ambientSourceRef.current = { node: source, type: "custom" };
+    } else {
+      startDefaultAmbient(ctx);
+    }
+  };
+
+  const setMelodyBuffer = (buffer) => {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const current = melodyRef.current;
+    const gainNode = current?.gain ?? ctx.createGain();
+    if (!current?.gain) {
+      gainNode.gain.value = 0.0;
+      gainNode.connect(ctx.destination);
+    }
+    if (current?.node) {
+      try {
+        current.node.stop();
+      } catch (err) {}
+    }
+    if (buffer) {
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      src.connect(gainNode);
+      src.start();
+      melodyRef.current = { type: "custom", node: src, gain: gainNode };
+    } else {
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = 320;
+      osc.connect(gainNode);
+      osc.start();
+      melodyRef.current = { type: "default", node: osc, gain: gainNode };
+    }
+    melodyStateRef.current = { timer: 0, step: 0 };
+  };
+
+  const playSound = (key) => {
+    const entry = assetsRef.current.sounds[key];
+    if (!entry || !entry.buffer) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    if (audioCtxRef.current?.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = entry.buffer;
+    source.loop = false;
+    const gainNode = ctx.createGain();
+    const baseGain = entry.gain ?? SOUND_DEFAULT_GAINS[key] ?? 0.55;
+    gainNode.gain.value = baseGain;
+    source.connect(gainNode).connect(ctx.destination);
+    source.start();
+  };
+
+  audioApiRef.current.play = playSound;
+
+  const handleTextureFile = (key, file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        assetsRef.current.textures[key] = {
+          image: img,
+          name: file.name,
+          patternCache: new WeakMap(),
+        };
+        forceAssetsTick((v) => v + 1);
+        queueFlash(`Текстура обновлена: ${file.name}`);
+      };
+      img.onerror = () => {
+        queueFlash("Не удалось загрузить изображение");
+      };
+      img.src = reader.result;
+    };
+    reader.onerror = () => queueFlash("Ошибка чтения файла");
+    reader.readAsDataURL(file);
+  };
+
+  const handleSoundFile = async (key, file) => {
+    if (!file) return;
+    try {
+      const ctx = ensureAudio();
+      if (!ctx) {
+        queueFlash("Аудио не поддерживается");
+        return;
+      }
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+      assetsRef.current.sounds[key] = { buffer, name: file.name };
+      if (key === SOUND_KEYS.AMBIENT) {
+        setAmbientBuffer(buffer);
+      } else if (key === SOUND_KEYS.MELODY) {
+        setMelodyBuffer(buffer);
+      }
+      forceAssetsTick((v) => v + 1);
+      queueFlash(`Звук обновлён: ${file.name}`);
+    } catch (err) {
+      console.error(err);
+      queueFlash("Не удалось загрузить звук");
+    }
+  };
+
+  const clearTexture = (key) => {
+    if (assetsRef.current.textures[key]) {
+      delete assetsRef.current.textures[key];
+      forceAssetsTick((v) => v + 1);
+      queueFlash(`Текстура ${key} сброшена`);
+    }
+  };
+
+  const clearSound = (key) => {
+    if (assetsRef.current.sounds[key]) {
+      delete assetsRef.current.sounds[key];
+      if (key === SOUND_KEYS.AMBIENT) {
+        setAmbientBuffer(null);
+      } else if (key === SOUND_KEYS.MELODY) {
+        setMelodyBuffer(null);
+      }
+      forceAssetsTick((v) => v + 1);
+      queueFlash(`Звук ${key} сброшен`);
+    }
+  };
+
+  const onTextureChange = (key) => (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleTextureFile(key, file);
+    }
+    event.target.value = "";
+  };
+
+  const onSoundChange = (key) => async (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await handleSoundFile(key, file);
+    }
+    event.target.value = "";
+  };
+
+  useEffect(() => {
+    return () => {
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mode === "play" && running) ensureAudio();
+  }, [mode, running]);
+
+  const textures = assetsRef.current.textures;
+  const sounds = assetsRef.current.sounds;
 
   // инпут
   useEffect(() => {
@@ -62,6 +301,7 @@ export default function App() {
       if (mode === "start" && e.type === "keydown" && (e.code === "Space" || e.code === "Enter")) {
         setMode("play");
         setRunning(true);
+        ensureAudio();
         return;
       }
 
@@ -83,13 +323,11 @@ export default function App() {
         return;
       }
 
-      // переключение по Q
+      // аптечка по Q
       if (e.type === "keydown" && e.code === "KeyQ" && mode === "play") {
-        if (p.weapons.length > 1) {
-          const idx = p.weapons.indexOf(p.weapon);
-          p.weapon = p.weapons[(idx + 1) % p.weapons.length];
-          queueFlash(`Выбрано оружие: ${p.weapon}`);
-        }
+        if (e.repeat) return;
+        useMedkit(stateRef.current, queueFlash, audioApiRef.current);
+        return;
       }
 
       // выбор по цифрам 1..5
@@ -116,6 +354,7 @@ export default function App() {
       if (mode === "start") {
         setMode("play");
         setRunning(true);
+        ensureAudio();
       }
     };
     const onMouseUp = () => {
@@ -156,9 +395,39 @@ export default function App() {
           canvas,
           onDeath,
           queueFlash,
+          audio: audioApiRef.current,
         });
       }
       draw(ctx, stateRef.current, mode, best);
+
+      if (audioCtxRef.current && ambientGainRef.current) {
+        const ctxTime = audioCtxRef.current.currentTime;
+        const hostiles =
+          (stateRef.current?.zombies?.length || 0) +
+          ((stateRef.current?.whites?.length || 0) * 1.5);
+        const intensity = Math.min(1, hostiles / 60);
+        const active = mode === "play" && running;
+        const targetAmb = active ? 0.06 + intensity * 0.2 : 0.02;
+        ambientGainRef.current.gain.setTargetAtTime(targetAmb, ctxTime, 0.5);
+        if (melodyRef.current) {
+          const melState = melodyStateRef.current;
+          const melodyControl = melodyRef.current;
+          melState.timer += dt;
+          if (melodyControl.type === "default" && melodyControl.node) {
+            if (melState.timer >= 2.4) {
+              melState.timer = 0;
+              melState.step = (melState.step + 1) % 6;
+              const notes = [220, 262, 294, 330, 392, 262];
+              melodyControl.node.frequency.setTargetAtTime(notes[melState.step], ctxTime, 0.35);
+            }
+          } else {
+            melState.timer = 0;
+          }
+          const targetMel = active ? 0.02 + intensity * 0.12 : 0.0;
+          melodyControl.gain.setTargetAtTime(targetMel, ctxTime, 0.4);
+        }
+      }
+
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
@@ -173,12 +442,101 @@ export default function App() {
           {flash}
         </div>
       )}
+      <button
+        type="button"
+        onClick={() => setShowAssetPanel((v) => !v)}
+        className="absolute top-3 left-3 bg-slate-800/80 text-white text-xs px-3 py-2 rounded-lg border border-slate-600 hover:bg-slate-700/80 transition"
+      >
+        {showAssetPanel ? "Скрыть медиа" : "Медиа-настройки"}
+      </button>
+      {showAssetPanel && (
+        <div className="absolute bottom-3 left-3 w-80 max-h-[72vh] overflow-y-auto bg-slate-900/90 text-white rounded-xl border border-slate-700 shadow-xl p-4 space-y-4 pointer-events-auto">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold">Настройка медиа</span>
+            <button
+              type="button"
+              onClick={() => setShowAssetPanel(false)}
+              className="text-slate-300 hover:text-white text-lg leading-none"
+              aria-label="Закрыть"
+            >
+              ×
+            </button>
+          </div>
+          <p className="text-xs text-slate-300">
+            Загрузите свои изображения и звуки, чтобы заменить графику и эффекты в игре. Файлы применяются мгновенно.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <div className="text-sm font-medium mb-2">Текстуры</div>
+              <div className="space-y-3">
+                {TEXTURE_OPTIONS.map((opt) => {
+                  const tex = textures[opt.key];
+                  return (
+                    <div key={opt.key} className="text-xs text-slate-200">
+                      <label className="block mb-1 font-medium">{opt.label}</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={onTextureChange(opt.key)}
+                          className="flex-1 text-[11px] file:mr-2 file:px-2 file:py-1 file:border-0 file:rounded file:bg-slate-700 file:text-white"
+                        />
+                        {tex && (
+                          <button
+                            type="button"
+                            onClick={() => clearTexture(opt.key)}
+                            className="px-2 py-1 rounded bg-slate-700/60 hover:bg-slate-600 text-[11px]"
+                          >
+                            Сброс
+                          </button>
+                        )}
+                      </div>
+                      {tex?.name && <div className="mt-1 text-[11px] text-slate-400">{tex.name}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm font-medium mb-2">Звуки</div>
+              <div className="space-y-3">
+                {SOUND_OPTIONS.map((opt) => {
+                  const sound = sounds[opt.key];
+                  return (
+                    <div key={opt.key} className="text-xs text-slate-200">
+                      <label className="block mb-1 font-medium">{opt.label}</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          onChange={onSoundChange(opt.key)}
+                          className="flex-1 text-[11px] file:mr-2 file:px-2 file:py-1 file:border-0 file:rounded file:bg-slate-700 file:text-white"
+                        />
+                        {sound && (
+                          <button
+                            type="button"
+                            onClick={() => clearSound(opt.key)}
+                            className="px-2 py-1 rounded bg-slate-700/60 hover:bg-slate-600 text-[11px]"
+                          >
+                            Сброс
+                          </button>
+                        )}
+                      </div>
+                      {sound?.name && <div className="mt-1 text-[11px] text-slate-400">{sound.name}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="absolute top-3 right-3 bg-slate-900/50 text-white text-xs rounded-lg px-3 py-2 pointer-events-none backdrop-blur">
         <div className="font-semibold mb-1">Управление</div>
         <div>WASD / стрелки — движение</div>
         <div>Мышь / Space — атака / поставить мину</div>
         <div>E — подобрать предмет</div>
-        <div>Q — сменить оружие</div>
+        <div>Q — использовать аптечку</div>
         <div>1..5 — выбрать слот</div>
         <div>Esc — пауза</div>
         <div>R — рестарт (после смерти)</div>
