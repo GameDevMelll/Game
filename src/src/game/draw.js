@@ -1,6 +1,10 @@
-import { DAY_DURATION, NIGHT_DURATION, DAY_NIGHT_CYCLE, PLAYER_MAX_HP } from "./constants.js";
+import {
+  DAY_DURATION,
+  NIGHT_DURATION,
+  DAY_NIGHT_CYCLE,
+  PLAYER_MAX_HP,
+} from "./constants.js";
 import { clamp, lerpColor } from "./utils.js";
-
 
 export function draw(ctx, state, mode, bestScore) {
   const p = state.player;
@@ -11,9 +15,8 @@ export function draw(ctx, state, mode, bestScore) {
   let nightK = 0;
   if (t < DAY_DURATION) nightK = t / DAY_DURATION;
   else nightK = 1 - (t - DAY_DURATION) / NIGHT_DURATION;
-  nightK = clamp(nightK, 0, 1);
   const ease = (x) => x * x * (3 - 2 * x);
-  nightK = ease(nightK);
+  nightK = ease(clamp(nightK, 0, 1));
 
   ctx.clearRect(0, 0, w, h);
 
@@ -25,19 +28,18 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
   ctx.fillRect(0, 0, w, h);
 
-  // camera
   ctx.save();
   const camX = p.x - w / 2;
   const camY = p.y - h / 2;
   ctx.translate(-camX, -camY);
 
-  // walls
+  // стены
   ctx.fillStyle = "#92a086";
   for (const wall of state.walls) {
     ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
   }
 
-  // grid
+  // сетка
   const tile = 110;
   const gridCol = lerpColor(
     { r: 148, g: 163, b: 184, a: 0.55 },
@@ -59,7 +61,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.stroke();
   }
 
-  // items
+  // предметы
   for (const it of state.items) {
     ctx.save();
     ctx.translate(it.x, it.y);
@@ -99,7 +101,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // placed mines
+  // мины
   for (const m of state.mines) {
     ctx.save();
     ctx.translate(m.x, m.y);
@@ -118,7 +120,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // explosions
+  // взрывы
   for (const ex of state.explosions) {
     const alpha = Math.max(0, ex.life / 0.35);
     ctx.save();
@@ -135,7 +137,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // zombies
+  // зомби
   for (const z of state.zombies) {
     ctx.save();
     ctx.translate(z.x, z.y);
@@ -158,7 +160,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // white shooters
+  // стрелки
   for (const wht of state.whites) {
     ctx.save();
     ctx.translate(wht.x, wht.y);
@@ -181,7 +183,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // player bullets
+  // пули игрока
   ctx.fillStyle = "#111";
   for (const b of state.bullets) {
     ctx.beginPath();
@@ -189,7 +191,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fill();
   }
 
-  // enemy bullets
+  // пули врагов
   ctx.fillStyle = "#f97316";
   for (const eb of state.enemyBullets) {
     ctx.beginPath();
@@ -197,7 +199,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fill();
   }
 
-  // player
+  // игрок
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.fillStyle = "rgba(0,0,0,0.12)";
@@ -233,7 +235,7 @@ export function draw(ctx, state, mode, bestScore) {
 
   ctx.restore(); // camera
 
-  // HUD HP
+  // HUD
   const hudW = 220;
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(18, 16, hudW, 30);
@@ -246,59 +248,6 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.strokeStyle = "rgba(0,0,0,0.2)";
   ctx.strokeRect(56, 22, hudW - 66, 18);
 
-  // weapon HUD
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(w - 230, 16, 210, 74);
-  ctx.fillStyle = "#fff";
-  ctx.fillText(`Оружие: ${p.weapon ? p.weapon : "—"}`, w - 220, 36);
-  ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
-  ctx.fillText(`Мины: ${p.mines}`, w - 220, 72);
-
-  // kills bottom-left
-  ctx.fillStyle = "rgba(15,23,42,0.65)";
-  ctx.fillRect(14, h - 80, 210, 60);
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "left";
-  ctx.fillText(`Убито: ${state.kills}`, 22, h - 56);
-  ctx.fillText(`Рекорд: ${bestScore}`, 22, h - 32);
-
-  // night overlay
-  if (nightK > 0.05) {
-    ctx.fillStyle = `rgba(15,23,42,${0.35 * nightK})`;
-    ctx.fillRect(0, 0, w, h);
-  }
-
-  // overlays
-  if (mode === "start") {
-    ctx.fillStyle = "rgba(15,23,42,0.75)";
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.font = "bold 38px system-ui, sans-serif";
-    ctx.fillText("Mope-like Survival", w / 2, h / 2 - 60);
-    ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — сменить", w / 2, h / 2 - 20);
-    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 20);
-  } else if (mode === "pause") {
-    ctx.fillStyle = "rgba(15,23,42,0.6)";
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.font = "bold 34px system-ui, sans-serif";
-    ctx.fillText("Пауза", w / 2, h / 2 - 8);
-    ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText("Нажмите Esc, чтобы продолжить", w / 2, h / 2 + 26);
-  } else if (mode === "dead") {
-    ctx.fillStyle = "rgba(15,23,42,0.7)";
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.font = "bold 34px system-ui, sans-serif";
-    ctx.fillText("Вы погибли", w / 2, h / 2 - 40);
-    ctx.font = "18px system-ui, sans-serif";
-    ctx.fillText(`Убито: ${state.kills}`, w / 2, h / 2);
-    ctx.fillText(`Рекорд: ${bestScore}`, w / 2, h / 2 + 26);
-    ctx.font = "14px system-ui, sans-serif";
-    ctx.fillText("Нажмите R, чтобы сыграть снова", w / 2, h / 2 + 54);
-  }
-}
+  ctx.fillStyle = "#fff
