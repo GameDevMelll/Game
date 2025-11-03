@@ -1,4 +1,8 @@
-import { WORLD, PLAYER_MAX_HP, ZOMBIE_BASE_SPEED } from "./constants.js";
+import {
+  WORLD,
+  PLAYER_MAX_HP,
+  ZOMBIE_BASE_SPEED,
+} from "./constants.js";
 
 export const makePlayer = () => ({
   x: WORLD.w / 2,
@@ -12,6 +16,11 @@ export const makePlayer = () => ({
   attackCD: 0,
   swing: 0,
   mines: 0,
+  // для рывка
+  dashTime: 0,
+  dashCD: 0,
+  moveX: 0,
+  moveY: 0,
 });
 
 export const makeZombie = (x, y, kind = null) => {
