@@ -1,4 +1,6 @@
 export function draw(ctx, state, mode, bestScore) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
   // предметы
   for (const it of state.items) {
     ctx.save();
