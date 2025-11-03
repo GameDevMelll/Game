@@ -17,10 +17,12 @@ export default function App() {
   const [flash, setFlash] = useState("");
   const [best, setBest] = useState(0);
 
+  // инициализация состояния
   if (!stateRef.current) {
     stateRef.current = createInitialState(makeWalls, makePlayer);
   }
 
+  // загрузка рекорда
   useEffect(() => {
     try {
       const b = Number(localStorage.getItem("ms_best") || 0);
@@ -34,7 +36,7 @@ export default function App() {
   };
 
   const onDeath = () => {
-    stateRef.current.allowUpdate = false; // 🚫 остановка логики
+    stateRef.current.allowUpdate = false; // 🚫 остановка обновлений
     setRunning(false);
     setMode("dead");
     const kills = stateRef.current.kills || 0;
@@ -49,25 +51,29 @@ export default function App() {
 
   const restart = () => {
     stateRef.current = createInitialState(makeWalls, makePlayer);
-    stateRef.current.allowUpdate = true; // ✅ включаем игру снова
+    stateRef.current.allowUpdate = true; // ✅ снова разрешаем обновление
     setMode("play");
     setRunning(true);
     setFlash("");
   };
 
+  // инициализация аудио
   const ensureAudio = () => {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     if (!audioCtxRef.current) {
       const ctx = new AudioCtx();
+
       const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
       const data = noiseBuffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) {
         data[i] = (Math.random() * 2 - 1) * 0.08;
       }
+
       const noiseSource = ctx.createBufferSource();
       noiseSource.buffer = noiseBuffer;
       noiseSource.loop = true;
+
       const ambientGain = ctx.createGain();
       ambientGain.gain.value = 0.05;
       noiseSource.connect(ambientGain).connect(ctx.destination);
@@ -76,6 +82,7 @@ export default function App() {
       const melodyOsc = ctx.createOscillator();
       melodyOsc.type = "triangle";
       melodyOsc.frequency.value = 320;
+
       const melodyGain = ctx.createGain();
       melodyGain.gain.value = 0.0;
       melodyOsc.connect(melodyGain).connect(ctx.destination);
@@ -102,12 +109,14 @@ export default function App() {
     if (mode === "play" && running) ensureAudio();
   }, [mode, running]);
 
+  // обработка ввода
   useEffect(() => {
     const onKey = (e) => {
       const st = stateRef.current;
       const p = st.player;
       st.keys[e.code] = e.type === "keydown";
 
+      // старт
       if (mode === "start" && e.type === "keydown" && (e.code === "Space" || e.code === "Enter")) {
         setMode("play");
         setRunning(true);
@@ -116,6 +125,7 @@ export default function App() {
         return;
       }
 
+      // пауза
       if (e.type === "keydown" && e.code === "Escape") {
         if (mode === "play") {
           setMode("pause");
@@ -129,17 +139,20 @@ export default function App() {
         return;
       }
 
+      // рестарт после смерти
       if (mode === "dead" && e.type === "keydown" && e.code === "KeyR") {
         restart();
         return;
       }
 
+      // аптечка
       if (e.type === "keydown" && e.code === "KeyQ" && mode === "play") {
         if (e.repeat) return;
-        useMedkit(stateRef.current, queueFlash);
+        useMedkit(st, queueFlash);
         return;
       }
 
+      // выбор оружия
       if (e.type === "keydown" && mode === "play" && e.code.startsWith("Digit")) {
         const slot = Number(e.code.slice(5)) - 1;
         if (slot >= 0 && slot < p.weapons.length) {
@@ -157,6 +170,7 @@ export default function App() {
       st.mouse.x = e.clientX - rect.left;
       st.mouse.y = e.clientY - rect.top;
     };
+
     const onMouseDown = () => {
       const st = stateRef.current;
       st.mouse.down = true;
@@ -164,9 +178,10 @@ export default function App() {
         setMode("play");
         setRunning(true);
         ensureAudio();
-        st.allowUpdate = true; // ✅ разрешаем обновление при клике
+        st.allowUpdate = true; // ✅ активируем обновление
       }
     };
+
     const onMouseUp = () => {
       const st = stateRef.current;
       st.mouse.down = false;
@@ -187,30 +202,40 @@ export default function App() {
     };
   }, [mode]);
 
+  // основной цикл
   useEffect(() => {
     let frame;
     let last = 0;
+
     const loop = (t) => {
       const canvas = canvasRef.current;
       if (!canvas) {
         frame = requestAnimationFrame(loop);
         return;
       }
+
       const ctx = canvas.getContext("2d");
       const dt = Math.min(0.033, (t - last) / 1000);
       last = t;
+
       if (mode === "play" && running) {
         update(stateRef.current, dt, { canvas, onDeath, queueFlash });
       }
+
       draw(ctx, stateRef.current, mode, best);
 
+      // динамика звука
       if (audioCtxRef.current && ambientGainRef.current) {
         const ctxTime = audioCtxRef.current.currentTime;
-        const hostiles = (stateRef.current?.zombies?.length || 0) + ((stateRef.current?.whites?.length || 0) * 1.5);
+        const hostiles =
+          (stateRef.current?.zombies?.length || 0) +
+          ((stateRef.current?.whites?.length || 0) * 1.5);
         const intensity = Math.min(1, hostiles / 60);
         const active = mode === "play" && running;
+
         const targetAmb = active ? 0.06 + intensity * 0.2 : 0.02;
         ambientGainRef.current.gain.setTargetAtTime(targetAmb, ctxTime, 0.5);
+
         if (melodyRef.current) {
           const melState = melodyStateRef.current;
           melState.timer += dt;
@@ -218,7 +243,11 @@ export default function App() {
             melState.timer = 0;
             melState.step = (melState.step + 1) % 6;
             const notes = [220, 262, 294, 330, 392, 262];
-            melodyRef.current.osc.frequency.setTargetAtTime(notes[melState.step], ctxTime, 0.35);
+            melodyRef.current.osc.frequency.setTargetAtTime(
+              notes[melState.step],
+              ctxTime,
+              0.35
+            );
           }
           const targetMel = active ? 0.02 + intensity * 0.12 : 0.0;
           melodyRef.current.gain.setTargetAtTime(targetMel, ctxTime, 0.4);
@@ -227,6 +256,7 @@ export default function App() {
 
       frame = requestAnimationFrame(loop);
     };
+
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
   }, [mode, running, best]);
