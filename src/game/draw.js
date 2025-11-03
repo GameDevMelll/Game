@@ -127,6 +127,8 @@ export function draw(ctx, state, mode, bestScore) {
   const p = state.player;
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
+  const villagers = state.villagers ?? [];
+  const villagerCount = villagers.length;
 
   // day-night
   const t = state.dayTime % DAY_NIGHT_CYCLE;
@@ -251,7 +253,7 @@ export function draw(ctx, state, mode, bestScore) {
   }
 
   // villagers
-  for (const v of state.villagers ?? []) {
+  for (const v of villagers) {
     ctx.save();
     ctx.translate(v.x, v.y);
     ctx.fillStyle = "rgba(0,0,0,0.08)";
@@ -481,7 +483,7 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillText(`Оружие: ${p.weapon ? p.weapon : "—"}`, w - 220, 36);
   ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
   ctx.fillText(`Мины: ${p.mines}`, w - 220, 72);
-  ctx.fillText(`Жители: ${state.villagers?.length ?? 0}`, w - 220, 88);
+  ctx.fillText(`Жители: ${villagerCount}`, w - 220, 88);
 
   // kills (без рекорда)
   ctx.fillStyle = "rgba(15,23,42,0.65)";
@@ -489,7 +491,7 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillStyle = "#fff";
   ctx.textAlign = "left";
   ctx.fillText(`Убито: ${state.kills}`, 22, h - 52);
-  ctx.fillText(`Жители: ${state.villagers?.length ?? 0}`, 22, h - 28);
+  ctx.fillText(`Жители: ${villagerCount}`, 22, h - 28);
 
   // инвентарь (5 слотов)
   const invSlots = 5;

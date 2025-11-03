@@ -167,15 +167,16 @@ export function createInitialState(makeWalls, makePlayer) {
   // стартовые предметы вокруг игрока
   const cx = player.x;
   const cy = player.y;
-  state.items.push(
+  const startingItems = [
     makeItem(cx + 120, cy + 20, "bat"),
     makeItem(cx - 140, cy - 20, "pistol"),
     makeItem(cx + 40, cy - 130, "ammo"),
     makeItem(cx + 10, cy + 180, "mine"),
     makeItem(cx - 60, cy + 130, "medkit"),
     makeItem(cx + 180, cy - 40, "shotgun"),
-    makeItem(cx - 200, cy + 40, "glaive")
-  );
+    makeItem(cx - 200, cy + 40, "glaive"),
+  ];
+  state.items.push(...startingItems);
 
   for (let i = 0; i < INITIAL_VILLAGERS; i++) {
     const offsetAng = (Math.PI * 2 * i) / INITIAL_VILLAGERS;

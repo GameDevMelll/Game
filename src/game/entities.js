@@ -12,6 +12,8 @@ import {
   XP_LEVEL_BASE,
 } from "./constants.js";
 
+const ZOMBIE_BASE_HP = 34;
+
 export const makePlayer = () => ({
   x: WORLD.w / 2,
   y: WORLD.h / 2,
@@ -40,8 +42,8 @@ const makeBaseZombie = (x, y, kind, overrides = {}) => ({
   x,
   y,
   r: 16,
-  hp: 34,
-  maxHp: 34,
+  hp: ZOMBIE_BASE_HP,
+  maxHp: ZOMBIE_BASE_HP,
   speed: ZOMBIE_BASE_SPEED,
   age: 0,
   kind,
@@ -56,8 +58,8 @@ const makeBaseZombie = (x, y, kind, overrides = {}) => ({
 const ZOMBIE_KIND_FACTORIES = {
   fat: () => ({
     r: 16 * 1.4,
-    hp: 34 * 2,
-    maxHp: 34 * 2,
+    hp: ZOMBIE_BASE_HP * 2,
+    maxHp: ZOMBIE_BASE_HP * 2,
     speed: ZOMBIE_BASE_SPEED * 0.8,
     xp: XP_PER_KILL + 6,
   }),
@@ -71,8 +73,8 @@ const ZOMBIE_KIND_FACTORIES = {
   }),
   brute: () => ({
     r: 16 * 1.3,
-    hp: 34 * 3,
-    maxHp: 34 * 3,
+    hp: ZOMBIE_BASE_HP * 3,
+    maxHp: ZOMBIE_BASE_HP * 3,
     speed: ZOMBIE_BASE_SPEED * 0.75,
     behavior: "charge",
     chargeCD: 2.5 + Math.random() * 2.5,
@@ -88,16 +90,16 @@ const ZOMBIE_KIND_FACTORIES = {
   }),
   ghost: () => ({
     r: 15,
-    hp: 34,
-    maxHp: 34,
+    hp: ZOMBIE_BASE_HP,
+    maxHp: ZOMBIE_BASE_HP,
     speed: ZOMBIE_BASE_SPEED * GHOST_SPEED_MULT,
     intangible: true,
     xp: XP_PER_KILL + 8,
   }),
   bomber: () => ({
     r: 17,
-    hp: 34 * 1.2,
-    maxHp: 34 * 1.2,
+    hp: ZOMBIE_BASE_HP * 1.2,
+    maxHp: ZOMBIE_BASE_HP * 1.2,
     mineTimer: BOMBER_MINE_DELAY,
     xp: XP_PER_KILL + 12,
   }),
@@ -153,8 +155,8 @@ export const makeWhite = (x, y, type = "white") => {
       x,
       y,
       r: 20,
-      hp: 34 * 2,
-      maxHp: 34 * 2,
+      hp: ZOMBIE_BASE_HP * 2,
+      maxHp: ZOMBIE_BASE_HP * 2,
       age: 0,
       shootCD: 1.2,
       summonCD: 0,
