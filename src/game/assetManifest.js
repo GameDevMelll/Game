@@ -1,31 +1,13 @@
+// src/game/assetManifest.js
 import { TEXTURE_KEYS, SOUND_KEYS } from "./assetKeys.js";
-import zombiePng from "../assets/textures/zombie.png";
+import zombiePng from "../assets/textures/zombie.png"; // твой спрайт
 
-export const TEXTURE_MANIFEST = {
-  [TEXTURE_KEYS.ZOMBIE]: zombiePng,
-};
-/**
- * Манифест ресурсов.
- *
- * Чтобы поменять текстуру или звук, добавьте файл в проект (например, в папку
- * `public/textures` или `src/assets`) и импортируйте его здесь. Затем укажите
- * путь в соответствующем поле манифеста. Пример:
- *
- * import customPlayer from "../assets/textures/my-player.png";
- *
- * export const TEXTURE_MANIFEST = {
- *   ...
- *   [TEXTURE_KEYS.PLAYER]: customPlayer,
- * };
- *
- * Файлы со звуками можно настроить аналогично. Дополнительно можно указать
- * значение `gain`, чтобы подстроить громкость (например, `{ src: myFx, gain: 0.4 }`).
- */
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: null,
   [TEXTURE_KEYS.WALL]: null,
   [TEXTURE_KEYS.PLAYER]: null,
   [TEXTURE_KEYS.VILLAGER]: null,
+  [TEXTURE_KEYS.ZOMBIE]: zombiePng,        // ← ЗДЕСЬ!
   [TEXTURE_KEYS.RANGED]: null,
   [TEXTURE_KEYS.GHOST]: null,
   [TEXTURE_KEYS.SKELETON]: null,
