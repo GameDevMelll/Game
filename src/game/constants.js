@@ -1,4 +1,4 @@
-diff --git a/src/game/constants.js b/src/game/constants.js
+
 index 75fddfe68a800fd367f847f33d74a32c78ad9a26..60143f5a9bf2edcf475e77fe87ee30b759743333 100644
 --- a/src/game/constants.js
 +++ b/src/game/constants.js
