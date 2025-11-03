@@ -1,4 +1,3 @@
-// src/game/maze.js
 import { clamp } from "./utils.js";
 import { MAZE_PASSAGE, WALL_THICKNESS, WORLD } from "./constants.js";
 
@@ -67,7 +66,7 @@ export function makeWalls() {
   walls.push({ x: offsetX, y: offsetY, w: WALL_THICKNESS, h: WORLD.h - offsetY * 2 - 80 });
   walls.push({ x: WORLD.w - offsetX - WALL_THICKNESS, y: offsetY, w: WALL_THICKNESS, h: WORLD.h - offsetY * 2 - 80 });
 
-  // длинные горизонтальные
+  // горизонтальные
   for (let y = 0; y < R; y++) {
     let runStart = null;
     for (let x = 0; x < C; x++) {
@@ -84,7 +83,7 @@ export function makeWalls() {
     }
   }
 
-  // длинные вертикальные
+  // вертикальные
   for (let x = 0; x < C; x++) {
     let runStart = null;
     for (let y = 0; y < R; y++) {
@@ -101,7 +100,7 @@ export function makeWalls() {
     }
   }
 
-  // центр чистый
+  // не ставим стены прямо в центре
   return walls.filter((w) => {
     const cx = clamp(WORLD.w / 2, w.x, w.x + w.w);
     const cy = clamp(WORLD.h / 2, w.y, w.y + w.h);
