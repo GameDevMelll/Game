@@ -18,6 +18,9 @@ import {
   MINE_EXPLOSION_RADIUS,
   WALL_THICKNESS,
   DAY_NIGHT_CYCLE,
+  DASH_SPEED,
+  DASH_DURATION,
+  DASH_COOLDOWN,
 } from "./constants.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
 import { makeZombie, makeItem, makeWhite, makeBullet } from "./entities.js";
@@ -183,7 +186,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   state.dayTime += dt;
   if (state.dayTime >= DAY_NIGHT_CYCLE) state.dayTime -= DAY_NIGHT_CYCLE;
 
-  // движение игрока
+  // ========= движение игрока + рывок =========
   let dx = 0,
     dy = 0;
   const keys = state.keys;
@@ -191,14 +194,37 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   if (keys["KeyS"] || keys["ArrowDown"]) dy += 1;
   if (keys["KeyA"] || keys["ArrowLeft"]) dx -= 1;
   if (keys["KeyD"] || keys["ArrowRight"]) dx += 1;
-  const len = Math.hypot(dx, dy) || 1;
-  let nx = clamp(p.x + (dx / len) * PLAYER_SPEED * dt, p.r, WORLD.w - p.r);
-  let ny = clamp(p.y + (dy / len) * PLAYER_SPEED * dt, p.r, WORLD.h - p.r);
+  let len = Math.hypot(dx, dy) || 1;
+  let moveX = dx / len;
+  let moveY = dy / len;
+
+  // обновляем направление, если игрок реально движется
+  if (dx !== 0 || dy !== 0) {
+    p.moveX = moveX;
+    p.moveY = moveY;
+  }
+
+  // тики рывка/кулдауна
+  if (p.dashCD > 0) p.dashCD -= dt;
+  if (p.dashTime > 0) p.dashTime -= dt;
+
+  // старт рывка — по Shift
+  const wantDash = keys["ShiftLeft"] || keys["ShiftRight"];
+  if (wantDash && p.dashCD <= 0 && (p.moveX !== 0 || p.moveY !== 0)) {
+    p.dashTime = DASH_DURATION;
+    p.dashCD = DASH_COOLDOWN;
+  }
+
+  // выбираем скорость: обычная или рывок
+  const curSpeed = p.dashTime > 0 ? DASH_SPEED : PLAYER_SPEED;
+
+  let nx = clamp(p.x + (p.moveX || 0) * curSpeed * dt, p.r, WORLD.w - p.r);
+  let ny = clamp(p.y + (p.moveY || 0) * curSpeed * dt, p.r, WORLD.h - p.r);
 
   for (const w of state.walls) {
     if (circleRectCollides(nx, ny, p.r, w)) {
-      const nxOnly = clamp(p.x + (dx / len) * PLAYER_SPEED * dt, p.r, WORLD.w - p.r);
-      const nyOnly = clamp(p.y + (dy / len) * PLAYER_SPEED * dt, p.r, WORLD.h - p.r);
+      const nxOnly = clamp(p.x + (p.moveX || 0) * curSpeed * dt, p.r, WORLD.w - p.r);
+      const nyOnly = clamp(p.y + (p.moveY || 0) * curSpeed * dt, p.r, WORLD.h - p.r);
       if (!circleRectCollides(nxOnly, p.y, p.r, w)) {
         nx = nxOnly;
         ny = p.y;
@@ -266,7 +292,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     }
   }
 
-  // движение зомби
+  // зомби
   for (const z of state.zombies) {
     z.age += dt;
     const ang = angleBetween(z.x, z.y, p.x, p.y);
@@ -431,7 +457,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     state.explosions = keepEx;
   }
 
-  // вражеские пули
+  // пули врагов
   for (const eb of state.enemyBullets) {
     eb.x += Math.cos(eb.ang) * ENEMY_BULLET_SPEED * dt;
     eb.y += Math.sin(eb.ang) * ENEMY_BULLET_SPEED * dt;
