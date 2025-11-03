@@ -34,6 +34,15 @@ export default function App() {
     setFlash(msg);
     setTimeout(() => setFlash(""), 1100);
   };
+useEffect(() => {
+  if (!stateRef.current) return;
+  // синхронизация allowUpdate с mode и running
+  if (mode === "play" && running) {
+    stateRef.current.allowUpdate = true;
+  } else {
+    stateRef.current.allowUpdate = false;
+  }
+}, [mode, running]);
 
   const onDeath = () => {
     stateRef.current.allowUpdate = false; // 🚫 остановка обновлений
