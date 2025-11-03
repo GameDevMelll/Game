@@ -1,4 +1,4 @@
-diff --git a/src/game/entities.js b/src/game/entities.js
+
 index c67a1a6f7999d9d59d89fbe97c73b32ff6dab3f4..bcf4fcba6690dfc8de0082766ffc615eb5df69d4 100644
 --- a/src/game/entities.js
 +++ b/src/game/entities.js
