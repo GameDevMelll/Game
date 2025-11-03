@@ -2,6 +2,7 @@
 import { TEXTURE_KEYS, SOUND_KEYS } from "./assetKeys.js";
 import zombiePng from "../assets/textures/zom-removebg-preview.png"; // твой спрайт
 import GhostPng from "../assets/textures/Ghost-removebg-preview.png";
+import RangedPng from "../assets/textures/Ranged-removebg-preview.png";
 
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: null,
@@ -9,7 +10,7 @@ export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.PLAYER]: null,
   [TEXTURE_KEYS.VILLAGER]: null,
   [TEXTURE_KEYS.ZOMBIE]: zombiePng,        // ← ЗДЕСЬ!
-  [TEXTURE_KEYS.RANGED]: null,
+  [TEXTURE_KEYS.RANGED]: RangedPng,
   [TEXTURE_KEYS.GHOST]: GhostPng,
   [TEXTURE_KEYS.SKELETON]: null,
   [TEXTURE_KEYS.WITCH]: null,
