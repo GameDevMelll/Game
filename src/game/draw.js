@@ -11,6 +11,7 @@ export function draw(ctx, state, mode, bestScore) {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
 
+  // day-night
   const t = state.dayTime % DAY_NIGHT_CYCLE;
   let nightK = 0;
   if (t < DAY_DURATION) nightK = t / DAY_DURATION;
@@ -28,18 +29,19 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
   ctx.fillRect(0, 0, w, h);
 
+  // camera
   ctx.save();
   const camX = p.x - w / 2;
   const camY = p.y - h / 2;
   ctx.translate(-camX, -camY);
 
-  // стены
+  // walls
   ctx.fillStyle = "#92a086";
   for (const wall of state.walls) {
     ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
   }
 
-  // сетка
+  // grid
   const tile = 110;
   const gridCol = lerpColor(
     { r: 148, g: 163, b: 184, a: 0.55 },
@@ -61,7 +63,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.stroke();
   }
 
-  // предметы
+  // items
   for (const it of state.items) {
     ctx.save();
     ctx.translate(it.x, it.y);
@@ -101,7 +103,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // мины
+  // mines
   for (const m of state.mines) {
     ctx.save();
     ctx.translate(m.x, m.y);
@@ -120,7 +122,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // взрывы
+  // explosions
   for (const ex of state.explosions) {
     const alpha = Math.max(0, ex.life / 0.35);
     ctx.save();
@@ -137,7 +139,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // зомби
+  // zombies
   for (const z of state.zombies) {
     ctx.save();
     ctx.translate(z.x, z.y);
@@ -160,7 +162,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // стрелки
+  // shooters
   for (const wht of state.whites) {
     ctx.save();
     ctx.translate(wht.x, wht.y);
@@ -183,7 +185,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // пули игрока
+  // bullets
   ctx.fillStyle = "#111";
   for (const b of state.bullets) {
     ctx.beginPath();
@@ -191,7 +193,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fill();
   }
 
-  // пули врагов
+  // enemy bullets
   ctx.fillStyle = "#f97316";
   for (const eb of state.enemyBullets) {
     ctx.beginPath();
@@ -199,7 +201,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fill();
   }
 
-  // игрок
+  // player
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.fillStyle = "rgba(0,0,0,0.12)";
@@ -235,7 +237,7 @@ export function draw(ctx, state, mode, bestScore) {
 
   ctx.restore(); // camera
 
-  // HUD
+  // HUD: HP
   const hudW = 220;
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(18, 16, hudW, 30);
@@ -248,6 +250,7 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.strokeStyle = "rgba(0,0,0,0.2)";
   ctx.strokeRect(56, 22, hudW - 66, 18);
 
+  // HUD: оружие
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(w - 230, 16, 210, 74);
   ctx.fillStyle = "#fff";
@@ -255,18 +258,70 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
   ctx.fillText(`Мины: ${p.mines}`, w - 220, 72);
 
+  // kills (без рекорда)
   ctx.fillStyle = "rgba(15,23,42,0.65)";
-  ctx.fillRect(14, h - 80, 210, 60);
+  ctx.fillRect(14, h - 64, 180, 44);
   ctx.fillStyle = "#fff";
   ctx.textAlign = "left";
-  ctx.fillText(`Убито: ${state.kills}`, 22, h - 56);
-  ctx.fillText(`Рекорд: ${bestScore}`, 22, h - 32);
+  ctx.fillText(`Убито: ${state.kills}`, 22, h - 40);
 
+  // инвентарь (5 слотов)
+  const invSlots = 5;
+  const slotSize = 42;
+  const slotGap = 4;
+  const invTotalW = invSlots * slotSize + (invSlots - 1) * slotGap;
+  const invX = w / 2 - invTotalW / 2;
+  const invY = h - 76;
+  const weapons = p.weapons || [];
+  for (let i = 0; i < invSlots; i++) {
+    const sx = invX + i * (slotSize + slotGap);
+    const sy = invY;
+    ctx.fillStyle = "rgba(15,23,42,0.55)";
+    ctx.fillRect(sx, sy, slotSize, slotSize);
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.strokeRect(sx, sy, slotSize, slotSize);
+    const wpn = weapons[i];
+    if (wpn) {
+      ctx.save();
+      ctx.translate(sx + slotSize / 2, sy + slotSize / 2);
+      if (wpn === "bat") {
+        ctx.fillStyle = "#8b5a2b";
+        ctx.fillRect(-14, -4, 28, 8);
+      } else if (wpn === "pistol") {
+        ctx.fillStyle = "#333";
+        ctx.fillRect(-10, -4, 20, 8);
+        ctx.fillStyle = "#999";
+        ctx.fillRect(0, -4, 5, 12);
+      } else if (wpn === "mine") {
+        ctx.fillStyle = "#444";
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#dc2626";
+        ctx.beginPath();
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    if (p.weapon === wpn) {
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx - 1, sy - 1, slotSize + 2, slotSize + 2);
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = "10px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(String(i + 1), sx + 5, sy + 13);
+  }
+
+  // night overlay
   if (nightK > 0.05) {
     ctx.fillStyle = `rgba(15,23,42,${0.35 * nightK})`;
     ctx.fillRect(0, 0, w, h);
   }
 
+  // overlays
   if (mode === "start") {
     ctx.fillStyle = "rgba(15,23,42,0.75)";
     ctx.fillRect(0, 0, w, h);
@@ -276,7 +331,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillText("Mope-like Survival", w / 2, h / 2 - 60);
     ctx.font = "16px system-ui, sans-serif";
     ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — сменить", w / 2, h / 2 - 20);
-    ctx.fillText("ЛКМ / Space — начать", w / 2, h / 2 + 20);
+    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 20);
   } else if (mode === "pause") {
     ctx.fillStyle = "rgba(15,23,42,0.6)";
     ctx.fillRect(0, 0, w, h);
@@ -285,7 +340,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.font = "bold 34px system-ui, sans-serif";
     ctx.fillText("Пауза", w / 2, h / 2 - 8);
     ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText("Esc — продолжить", w / 2, h / 2 + 26);
+    ctx.fillText("Нажмите Esc, чтобы продолжить", w / 2, h / 2 + 26);
   } else if (mode === "dead") {
     ctx.fillStyle = "rgba(15,23,42,0.7)";
     ctx.fillRect(0, 0, w, h);
@@ -297,6 +352,6 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillText(`Убито: ${state.kills}`, w / 2, h / 2);
     ctx.fillText(`Рекорд: ${bestScore}`, w / 2, h / 2 + 26);
     ctx.font = "14px system-ui, sans-serif";
-    ctx.fillText("R — сыграть снова", w / 2, h / 2 + 54);
+    ctx.fillText("Нажмите R, чтобы сыграть снова", w / 2, h / 2 + 54);
   }
 }
