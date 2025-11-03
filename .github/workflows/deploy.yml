@@ -10,7 +10,6 @@ permissions:
   pages: write
   id-token: write
 
-# это важно, чтобы не было двух одновременных деплоев
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -22,19 +21,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ⬇️ ВАЖНО: без cache: npm
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install deps
+      # GitHub посмотрит на package.json и сам всё поставит
         run: npm install
 
       - name: Build
         run: npm run build
 
-      # говорим GitHub Pages, что это наш артефакт
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -47,11 +46,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # конфигурируем Pages
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v4
 
-      # и деплоим
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
