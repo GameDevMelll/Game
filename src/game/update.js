@@ -42,12 +42,8 @@ import {
   makeBoss,
 } from "./entities.js";
 
-/* -------------------------------
-   🔹 ДОБАВЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
---------------------------------- */
 export function update(state, dt, { canvas, onDeath, queueFlash }) {
-  if (!state.allowUpdate) return; // ⬅️ добавляем эту строку, чтобы апдейт шёл только после старта
-
+  if (!state.allowUpdate) return; 
   const p = state.player;
   if (!p.maxHp) p.maxHp = PLAYER_MAX_HP;
   p.maxHp = Math.max(p.maxHp, PLAYER_MAX_HP);
