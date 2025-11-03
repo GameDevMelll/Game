@@ -3,11 +3,13 @@ import { makeWalls } from "./game/maze.js";
 import { makePlayer } from "./game/entities.js";
 import { createInitialState, update, useMedkit } from "./game/update.js";
 import {
-  TEXTURE_OPTIONS,
-  SOUND_OPTIONS,
   createAssetStore,
   SOUND_KEYS,
   SOUND_DEFAULT_GAINS,
+  loadConfiguredTextures,
+  loadConfiguredSounds,
+  TEXTURE_MANIFEST,
+  SOUND_MANIFEST,
 } from "./game/assets.js";
 import { draw } from "./game/draw.js";
 
@@ -21,6 +23,7 @@ export default function App() {
   const melodyRef = useRef(null);
   const melodyStateRef = useRef({ timer: 0, step: 0 });
   const audioApiRef = useRef({ play: () => {} });
+  const soundsLoadPromiseRef = useRef(null);
 
   const [mode, setMode] = useState("start"); // start | play | pause | dead
   const [running, setRunning] = useState(false);
@@ -94,37 +97,7 @@ export default function App() {
     ambientSourceRef.current = { node: noiseSource, type: "noise" };
   };
 
-  const ensureAudio = () => {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return null;
-    if (!audioCtxRef.current) {
-      const ctx = new AudioCtx();
-      audioCtxRef.current = ctx;
-
-      const ambientGain = ctx.createGain();
-      ambientGain.gain.value = 0.05;
-      ambientGain.connect(ctx.destination);
-      ambientGainRef.current = ambientGain;
-      startDefaultAmbient(ctx);
-
-      const melodyGain = ctx.createGain();
-      melodyGain.gain.value = 0.0;
-      melodyGain.connect(ctx.destination);
-      const melodyOsc = ctx.createOscillator();
-      melodyOsc.type = "triangle";
-      melodyOsc.frequency.value = 320;
-      melodyOsc.connect(melodyGain);
-      melodyOsc.start();
-      melodyRef.current = { type: "default", node: melodyOsc, gain: melodyGain };
-      melodyStateRef.current = { timer: 0, step: 0 };
-    } else if (audioCtxRef.current.state === "suspended") {
-      audioCtxRef.current.resume();
-    }
-    return audioCtxRef.current;
-  };
-
-  const setAmbientBuffer = (buffer) => {
-    const ctx = ensureAudio();
+  const applyAmbientBuffer = (ctx, buffer) => {
     if (!ctx || !ambientGainRef.current) return;
     stopAmbientSource();
     if (buffer) {
@@ -139,18 +112,17 @@ export default function App() {
     }
   };
 
-  const setMelodyBuffer = (buffer) => {
-    const ctx = ensureAudio();
+  const applyMelodyBuffer = (ctx, buffer) => {
     if (!ctx) return;
-    const current = melodyRef.current;
-    const gainNode = current?.gain ?? ctx.createGain();
-    if (!current?.gain) {
+    let gainNode = melodyRef.current?.gain;
+    if (!gainNode) {
+      gainNode = ctx.createGain();
       gainNode.gain.value = 0.0;
       gainNode.connect(ctx.destination);
     }
-    if (current?.node) {
+    if (melodyRef.current?.node) {
       try {
-        current.node.stop();
+        melodyRef.current.node.stop();
       } catch (err) {}
     }
     if (buffer) {
@@ -169,6 +141,47 @@ export default function App() {
       melodyRef.current = { type: "default", node: osc, gain: gainNode };
     }
     melodyStateRef.current = { timer: 0, step: 0 };
+  };
+
+  const ensureAudio = () => {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioCtxRef.current) {
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+
+      const ambientGain = ctx.createGain();
+      ambientGain.gain.value = 0.05;
+      ambientGain.connect(ctx.destination);
+      ambientGainRef.current = ambientGain;
+      applyAmbientBuffer(ctx, null);
+
+      melodyRef.current = null;
+      applyMelodyBuffer(ctx, null);
+    } else if (audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+    const ctx = audioCtxRef.current;
+    if (ctx && !soundsLoadPromiseRef.current) {
+      soundsLoadPromiseRef.current = loadConfiguredSounds(ctx, SOUND_MANIFEST)
+        .then((loaded) => {
+          if (!loaded) return;
+          assetsRef.current.sounds = loaded;
+          const ambient = loaded[SOUND_KEYS.AMBIENT];
+          if (ambient?.buffer) {
+            applyAmbientBuffer(ctx, ambient.buffer);
+          }
+          const melody = loaded[SOUND_KEYS.MELODY];
+          if (melody?.buffer) {
+            applyMelodyBuffer(ctx, melody.buffer);
+          }
+        })
+        .catch((err) => {
+          console.warn("Не удалось подготовить звуки", err);
+        });
+    }
+
+    return ctx;
   };
 
   const playSound = (key) => {
@@ -191,89 +204,20 @@ export default function App() {
 
   audioApiRef.current.play = playSound;
 
-  const handleTextureFile = (key, file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        assetsRef.current.textures[key] = {
-          image: img,
-          name: file.name,
-          patternCache: new WeakMap(),
-        };
-        forceAssetsTick((v) => v + 1);
-        queueFlash(`Текстура обновлена: ${file.name}`);
-      };
-      img.onerror = () => {
-        queueFlash("Не удалось загрузить изображение");
-      };
-      img.src = reader.result;
+  useEffect(() => {
+    let cancelled = false;
+    loadConfiguredTextures(TEXTURE_MANIFEST)
+      .then((textures) => {
+        if (cancelled) return;
+        assetsRef.current.textures = textures;
+      })
+      .catch((err) => {
+        console.warn("Не удалось загрузить текстуры", err);
+      });
+    return () => {
+      cancelled = true;
     };
-    reader.onerror = () => queueFlash("Ошибка чтения файла");
-    reader.readAsDataURL(file);
-  };
-
-  const handleSoundFile = async (key, file) => {
-    if (!file) return;
-    try {
-      const ctx = ensureAudio();
-      if (!ctx) {
-        queueFlash("Аудио не поддерживается");
-        return;
-      }
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
-      assetsRef.current.sounds[key] = { buffer, name: file.name };
-      if (key === SOUND_KEYS.AMBIENT) {
-        setAmbientBuffer(buffer);
-      } else if (key === SOUND_KEYS.MELODY) {
-        setMelodyBuffer(buffer);
-      }
-      forceAssetsTick((v) => v + 1);
-      queueFlash(`Звук обновлён: ${file.name}`);
-    } catch (err) {
-      console.error(err);
-      queueFlash("Не удалось загрузить звук");
-    }
-  };
-
-  const clearTexture = (key) => {
-    if (assetsRef.current.textures[key]) {
-      delete assetsRef.current.textures[key];
-      forceAssetsTick((v) => v + 1);
-      queueFlash(`Текстура ${key} сброшена`);
-    }
-  };
-
-  const clearSound = (key) => {
-    if (assetsRef.current.sounds[key]) {
-      delete assetsRef.current.sounds[key];
-      if (key === SOUND_KEYS.AMBIENT) {
-        setAmbientBuffer(null);
-      } else if (key === SOUND_KEYS.MELODY) {
-        setMelodyBuffer(null);
-      }
-      forceAssetsTick((v) => v + 1);
-      queueFlash(`Звук ${key} сброшен`);
-    }
-  };
-
-  const onTextureChange = (key) => (event) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      handleTextureFile(key, file);
-    }
-    event.target.value = "";
-  };
-
-  const onSoundChange = (key) => async (event) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      await handleSoundFile(key, file);
-    }
-    event.target.value = "";
-  };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -286,9 +230,6 @@ export default function App() {
   useEffect(() => {
     if (mode === "play" && running) ensureAudio();
   }, [mode, running]);
-
-  const textures = assetsRef.current.textures;
-  const sounds = assetsRef.current.sounds;
 
   // инпут
   useEffect(() => {

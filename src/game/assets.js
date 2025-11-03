@@ -1,94 +1,71 @@
-export const TEXTURE_KEYS = {
-  BACKGROUND: "background",
-  WALL: "wall",
-  PLAYER: "player",
-  VILLAGER: "villager",
-  ZOMBIE: "zombie",
-  RANGED: "ranged",
-  GHOST: "ghost",
-  SKELETON: "skeleton",
-  WITCH: "witch",
-  BOMBER: "bomber",
-  BOSS: "boss",
-  PROJECTILE_PLAYER: "projectile_player",
-  PROJECTILE_ENEMY: "projectile_enemy",
-  SLASH: "slash",
-  EXPLOSION: "explosion",
-  MEDKIT: "medkit",
-  AMMO: "ammo",
-  MINE: "mine",
-  SHOTGUN: "shotgun",
-  GLAIVE: "glaive",
-  PISTOL: "pistol",
-  BAT: "bat",
+import { TEXTURE_KEYS, SOUND_KEYS, SOUND_DEFAULT_GAINS } from "./assetKeys.js";
+import { TEXTURE_MANIFEST, SOUND_MANIFEST } from "./assetManifest.js";
+
+const resolveEntry = (entry) => {
+  if (!entry) return null;
+  if (typeof entry === "string") return { src: entry };
+  if (entry?.src) return { src: entry.src, gain: entry.gain };
+  return null;
 };
 
-export const SOUND_KEYS = {
-  AMBIENT: "ambient",
-  MELODY: "melody",
-  PLAYER_ATTACK: "player_attack",
-  PLAYER_HIT: "player_hit",
-  ENEMY_HIT: "enemy_hit",
-  ENEMY_DIE: "enemy_die",
-  PICKUP: "pickup",
-  MEDKIT: "medkit_use",
-  MINE_EXPLODE: "mine_explode",
-  LEVEL_UP: "level_up",
-  WITCH_SHOOT: "witch_shoot",
+export const loadConfiguredTextures = async (manifest = TEXTURE_MANIFEST) => {
+  const textures = {};
+  if (typeof Image === "undefined") return textures;
+  const entries = Object.entries(manifest || {});
+  await Promise.all(
+    entries.map(
+      ([key, entry]) =>
+        new Promise((resolve) => {
+          const resolved = resolveEntry(entry);
+          if (!resolved?.src) {
+            resolve();
+            return;
+          }
+          const img = new Image();
+          img.onload = () => {
+            textures[key] = {
+              image: img,
+              patternCache: new WeakMap(),
+            };
+            resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = resolved.src;
+        })
+    )
+  );
+  return textures;
 };
 
-export const TEXTURE_OPTIONS = [
-  { key: TEXTURE_KEYS.BACKGROUND, label: "Фон" },
-  { key: TEXTURE_KEYS.WALL, label: "Стены" },
-  { key: TEXTURE_KEYS.PLAYER, label: "Игрок" },
-  { key: TEXTURE_KEYS.VILLAGER, label: "Житель" },
-  { key: TEXTURE_KEYS.ZOMBIE, label: "Зомби" },
-  { key: TEXTURE_KEYS.RANGED, label: "Стрелок" },
-  { key: TEXTURE_KEYS.GHOST, label: "Призрак" },
-  { key: TEXTURE_KEYS.SKELETON, label: "Скелет" },
-  { key: TEXTURE_KEYS.WITCH, label: "Ведьма" },
-  { key: TEXTURE_KEYS.BOMBER, label: "Подрывник" },
-  { key: TEXTURE_KEYS.BOSS, label: "Босс" },
-  { key: TEXTURE_KEYS.PROJECTILE_PLAYER, label: "Пули игрока" },
-  { key: TEXTURE_KEYS.PROJECTILE_ENEMY, label: "Пули врагов" },
-  { key: TEXTURE_KEYS.SLASH, label: "Рубящий удар" },
-  { key: TEXTURE_KEYS.EXPLOSION, label: "Взрыв" },
-  { key: TEXTURE_KEYS.MEDKIT, label: "Аптечка" },
-  { key: TEXTURE_KEYS.AMMO, label: "Патроны" },
-  { key: TEXTURE_KEYS.MINE, label: "Мина" },
-  { key: TEXTURE_KEYS.SHOTGUN, label: "Дробовик" },
-  { key: TEXTURE_KEYS.GLAIVE, label: "Глефа" },
-  { key: TEXTURE_KEYS.PISTOL, label: "Пистолет" },
-  { key: TEXTURE_KEYS.BAT, label: "Бита" },
-];
-
-export const SOUND_OPTIONS = [
-  { key: SOUND_KEYS.AMBIENT, label: "Фоновый шум", loop: true },
-  { key: SOUND_KEYS.MELODY, label: "Фоновая мелодия", loop: true },
-  { key: SOUND_KEYS.PLAYER_ATTACK, label: "Атака игрока" },
-  { key: SOUND_KEYS.PLAYER_HIT, label: "Урон игроку" },
-  { key: SOUND_KEYS.ENEMY_HIT, label: "Попадание по врагу" },
-  { key: SOUND_KEYS.ENEMY_DIE, label: "Смерть врага" },
-  { key: SOUND_KEYS.PICKUP, label: "Подбор предмета" },
-  { key: SOUND_KEYS.MEDKIT, label: "Использование аптечки" },
-  { key: SOUND_KEYS.MINE_EXPLODE, label: "Взрыв" },
-  { key: SOUND_KEYS.LEVEL_UP, label: "Новый уровень" },
-  { key: SOUND_KEYS.WITCH_SHOOT, label: "Выстрел ведьмы" },
-];
-
-export const SOUND_DEFAULT_GAINS = {
-  [SOUND_KEYS.PLAYER_ATTACK]: 0.55,
-  [SOUND_KEYS.PLAYER_HIT]: 0.7,
-  [SOUND_KEYS.ENEMY_HIT]: 0.5,
-  [SOUND_KEYS.ENEMY_DIE]: 0.6,
-  [SOUND_KEYS.PICKUP]: 0.5,
-  [SOUND_KEYS.MEDKIT]: 0.55,
-  [SOUND_KEYS.MINE_EXPLODE]: 0.75,
-  [SOUND_KEYS.LEVEL_UP]: 0.7,
-  [SOUND_KEYS.WITCH_SHOOT]: 0.55,
+export const loadConfiguredSounds = async (ctx, manifest = SOUND_MANIFEST) => {
+  const sounds = {};
+  if (!ctx || typeof fetch === "undefined") return sounds;
+  const entries = Object.entries(manifest || {});
+  await Promise.all(
+    entries.map(async ([key, entry]) => {
+      const resolved = resolveEntry(entry);
+      if (!resolved?.src) return;
+      try {
+        const response = await fetch(resolved.src);
+        if (!response.ok) return;
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+        sounds[key] = {
+          buffer,
+          gain: resolved.gain,
+        };
+      } catch (err) {
+        console.warn("Не удалось загрузить звук", key, err);
+      }
+    })
+  );
+  return sounds;
 };
 
 export const createAssetStore = () => ({
   textures: {},
   sounds: {},
 });
+
+export { TEXTURE_KEYS, SOUND_KEYS, SOUND_DEFAULT_GAINS };
+export { TEXTURE_MANIFEST, SOUND_MANIFEST };

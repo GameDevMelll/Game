@@ -282,53 +282,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.ellipse(0, 10, 18, 8, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (it.type === "bat") {
-      ctx.fillStyle = "#8b5a2b";
-      ctx.fillRect(-16, -4, 34, 8);
-    } else if (it.type === "pistol") {
-      ctx.fillStyle = "#333";
-      ctx.fillRect(-10, -4, 20, 8);
-      ctx.fillStyle = "#999";
-      ctx.fillRect(0, -4, 6, 14);
-    } else if (it.type === "ammo") {
-      ctx.fillStyle = "#888";
-      ctx.beginPath();
-      ctx.arc(0, 0, 9, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (it.type === "medkit") {
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(-11, -9, 22, 18);
-      ctx.fillStyle = "#d33";
-      ctx.fillRect(-3, -7, 6, 14);
-      ctx.fillRect(-7, -3, 14, 6);
-    } else if (it.type === "mine") {
-      ctx.fillStyle = "#444";
-      ctx.beginPath();
-      ctx.arc(0, 0, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#38bdf8";
-      ctx.beginPath();
-      ctx.arc(0, 0, 4, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (it.type === "shotgun") {
-      ctx.fillStyle = "#2f2f2f";
-      ctx.fillRect(-20, -5, 40, 10);
-      ctx.fillStyle = "#b91c1c";
-      ctx.fillRect(-12, -7, 12, 14);
-      ctx.fillStyle = "#facc15";
-      ctx.fillRect(6, -3, 14, 6);
-    } else if (it.type === "glaive") {
-      ctx.rotate(-Math.PI / 4);
-      ctx.fillStyle = "#1f2937";
-      ctx.fillRect(-4, -26, 8, 52);
-      ctx.fillStyle = "#38bdf8";
-      ctx.beginPath();
-      ctx.moveTo(-10, -32);
-      ctx.lineTo(18, -6);
-      ctx.lineTo(-10, 20);
-      ctx.closePath();
-      ctx.fill();
-    }
+    drawGroundItem(ctx, it, textures);
     ctx.restore();
   }
 
@@ -436,28 +390,6 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // slashes
-  for (const slash of state.slashes) {
-    const alpha = clamp((slash.life ?? 0) / (slash.maxLife || 0.001), 0, 1);
-    const radius = slash.radius ?? 140;
-    ctx.save();
-    ctx.translate(slash.x, slash.y);
-    ctx.rotate(slash.ang);
-    ctx.globalAlpha = alpha * 0.45;
-    ctx.strokeStyle = "#facc15";
-    ctx.lineWidth = 18;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, -Math.PI / 3, Math.PI / 3);
-    ctx.stroke();
-    ctx.globalAlpha = alpha * 0.22;
-    ctx.strokeStyle = "#fde68a";
-    ctx.lineWidth = 30;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius * 0.82, -Math.PI / 3, Math.PI / 3);
-    ctx.stroke();
-    ctx.restore();
-  }
-
   // zombies
   for (const z of state.zombies) {
     ctx.save();
@@ -485,18 +417,43 @@ export function draw(ctx, state, mode, bestScore) {
       ctx.stroke();
       ctx.restore();
     }
-    let bodyColor = "#7fb36a";
-    if (z.kind === "fat") bodyColor = "#6b8f57";
-    else if (z.kind === "small") bodyColor = "#9bd382";
-    else if (z.kind === "brute") bodyColor = "#92400e";
-    else if (z.kind === "stalker") bodyColor = "#4338ca";
-    ctx.fillStyle = bodyColor;
-    ctx.beginPath();
-    ctx.arc(0, 0, z.r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#112";
-    ctx.fillRect(-6, -3, 3, 2);
-    ctx.fillRect(3, -3, 3, 2);
+    const textureKey = ZOMBIE_TEXTURE_MAP[z.kind] || TEXTURE_KEYS.ZOMBIE;
+    const zombieTexture = getTexture(textures, textureKey);
+    let alpha = 1;
+    if (z.kind === "ghost") alpha = 0.55;
+    ctx.globalAlpha = alpha;
+    const drewZombie = drawTextureCircle(ctx, zombieTexture, z.r);
+    if (!drewZombie) {
+      let bodyColor = "#7fb36a";
+      if (z.kind === "fat") bodyColor = "#6b8f57";
+      else if (z.kind === "small") bodyColor = "#9bd382";
+      else if (z.kind === "brute") bodyColor = "#92400e";
+      else if (z.kind === "ghost") bodyColor = "#f8fafc";
+      else if (z.kind === "skeleton") bodyColor = "#e2e8f0";
+      else if (z.kind === "bomber") bodyColor = "#f97316";
+      else if (z.kind === "boss") bodyColor = "#166534";
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath();
+      ctx.arc(0, 0, z.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = z.kind === "skeleton" ? "#111" : "#112";
+      ctx.fillRect(-6, -3, 3, 2);
+      ctx.fillRect(3, -3, 3, 2);
+      if (z.kind === "boss") {
+        ctx.save();
+        ctx.rotate(0.3);
+        ctx.fillStyle = "#78350f";
+        ctx.fillRect(z.r * 0.4, -6, 36, 12);
+        ctx.restore();
+      } else if (z.kind === "bomber") {
+        ctx.fillStyle = "#1f2937";
+        ctx.fillRect(-4, z.r - 6, 8, 8);
+      }
+    } else {
+      ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 1;
     const ratio = clamp(z.hp / (z.maxHp || 34), 0, 1);
     ctx.fillStyle = "#111";
     ctx.fillRect(-16, -z.r - 10, 32, 4);
@@ -544,12 +501,20 @@ export function draw(ctx, state, mode, bestScore) {
   }
 
   // bullets
+  const playerBulletTexture = getTexture(textures, TEXTURE_KEYS.PROJECTILE_PLAYER);
   for (const b of state.bullets) {
     const radius = b.radius ?? 3;
-    ctx.fillStyle = radius > 3 ? "#facc15" : "#111";
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, radius, 0, Math.PI * 2);
-    ctx.fill();
+    if (playerBulletTexture) {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      drawTextureCircle(ctx, playerBulletTexture, radius);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = radius > 3 ? "#facc15" : "#111";
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   // enemy bullets
@@ -576,49 +541,53 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.ellipse(0, 10, 22, 10, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.rotate(p.facing);
-  ctx.fillStyle = "#4f9ee3";
-  ctx.beginPath();
-  ctx.arc(0, 0, p.r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  ctx.arc(7, -4, 2, 0, Math.PI * 2);
-  ctx.arc(7, 4, 2, 0, Math.PI * 2);
-  ctx.fill();
-  if (p.weapon === "bat") {
-    const swingT = Math.max(0, p.swing) / 0.28;
-    const extraRot = swingT > 0 ? -1.2 + (1 - swingT) * 1.2 : 0;
-    ctx.save();
-    ctx.rotate(extraRot);
-    ctx.fillStyle = "#8b5a2b";
-    ctx.fillRect(p.r * 0.6, -3, 16, 6);
-    ctx.restore();
-  } else if (p.weapon === "pistol") {
-    ctx.fillStyle = "#333";
-    ctx.fillRect(p.r * 0.6, -3, 10, 6);
-  } else if (p.weapon === "shotgun") {
-    ctx.fillStyle = "#2f2f2f";
-    ctx.fillRect(p.r * 0.4, -4, 20, 8);
-    ctx.fillStyle = "#b91c1c";
-    ctx.fillRect(p.r * 0.4 + 6, -6, 8, 12);
-    ctx.fillStyle = "#facc15";
-    ctx.fillRect(p.r * 0.4 + 16, -3, 8, 6);
-  } else if (p.weapon === "glaive") {
-    ctx.save();
-    ctx.rotate(0.2);
-    ctx.fillStyle = "#334155";
-    ctx.fillRect(p.r * 0.1, -3, 8, 36);
-    ctx.fillStyle = "#38bdf8";
+  const playerTexture = getTexture(textures, TEXTURE_KEYS.PLAYER);
+  const playerDrawn = drawTextureCircle(ctx, playerTexture, p.r);
+  if (!playerDrawn) {
+    ctx.fillStyle = "#4f9ee3";
     ctx.beginPath();
-    ctx.moveTo(p.r * 0.1 + 4, -26);
-    ctx.lineTo(p.r * 0.1 + 24, 0);
-    ctx.lineTo(p.r * 0.1 + 4, 26);
-    ctx.closePath();
+    ctx.arc(0, 0, p.r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
-  } else if (p.weapon === "mine") {
-    ctx.fillStyle = "#444";
-    ctx.fillRect(p.r * 0.6, -3, 10, 6);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(7, -4, 2, 0, Math.PI * 2);
+    ctx.arc(7, 4, 2, 0, Math.PI * 2);
+    ctx.fill();
+    if (p.weapon === "bat") {
+      const swingT = Math.max(0, p.swing) / 0.28;
+      const extraRot = swingT > 0 ? -1.2 + (1 - swingT) * 1.2 : 0;
+      ctx.save();
+      ctx.rotate(extraRot);
+      ctx.fillStyle = "#8b5a2b";
+      ctx.fillRect(p.r * 0.6, -3, 16, 6);
+      ctx.restore();
+    } else if (p.weapon === "pistol") {
+      ctx.fillStyle = "#333";
+      ctx.fillRect(p.r * 0.6, -3, 10, 6);
+    } else if (p.weapon === "shotgun") {
+      ctx.fillStyle = "#2f2f2f";
+      ctx.fillRect(p.r * 0.4, -4, 20, 8);
+      ctx.fillStyle = "#b91c1c";
+      ctx.fillRect(p.r * 0.4 + 6, -6, 8, 12);
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(p.r * 0.4 + 16, -3, 8, 6);
+    } else if (p.weapon === "glaive") {
+      ctx.save();
+      ctx.rotate(0.2);
+      ctx.fillStyle = "#334155";
+      ctx.fillRect(p.r * 0.1, -3, 8, 36);
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.moveTo(p.r * 0.1 + 4, -26);
+      ctx.lineTo(p.r * 0.1 + 24, 0);
+      ctx.lineTo(p.r * 0.1 + 4, 26);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    } else if (p.weapon === "mine") {
+      ctx.fillStyle = "#444";
+      ctx.fillRect(p.r * 0.6, -3, 10, 6);
+    }
   }
   ctx.restore();
 
@@ -686,42 +655,7 @@ export function draw(ctx, state, mode, bestScore) {
     if (wpn) {
       ctx.save();
       ctx.translate(sx + slotSize / 2, sy + slotSize / 2);
-      if (wpn === "bat") {
-        ctx.fillStyle = "#8b5a2b";
-        ctx.fillRect(-14, -4, 28, 8);
-      } else if (wpn === "pistol") {
-        ctx.fillStyle = "#333";
-        ctx.fillRect(-10, -4, 20, 8);
-        ctx.fillStyle = "#999";
-        ctx.fillRect(0, -4, 5, 12);
-      } else if (wpn === "shotgun") {
-        ctx.fillStyle = "#2f2f2f";
-        ctx.fillRect(-16, -5, 32, 10);
-        ctx.fillStyle = "#b91c1c";
-        ctx.fillRect(-8, -7, 10, 14);
-        ctx.fillStyle = "#facc15";
-        ctx.fillRect(8, -3, 10, 6);
-      } else if (wpn === "glaive") {
-        ctx.rotate(-Math.PI / 4);
-        ctx.fillStyle = "#1f2937";
-        ctx.fillRect(-3, -20, 6, 40);
-        ctx.fillStyle = "#38bdf8";
-        ctx.beginPath();
-        ctx.moveTo(-8, -26);
-        ctx.lineTo(14, -8);
-        ctx.lineTo(-8, 12);
-        ctx.closePath();
-        ctx.fill();
-      } else if (wpn === "mine") {
-        ctx.fillStyle = "#444";
-        ctx.beginPath();
-        ctx.arc(0, 0, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#dc2626";
-        ctx.beginPath();
-        ctx.arc(0, 0, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      drawWeaponIcon(ctx, wpn, textures);
       ctx.restore();
     }
     if (p.weapon === wpn) {
