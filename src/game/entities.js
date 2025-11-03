@@ -53,77 +53,80 @@ const makeBaseZombie = (x, y, kind, overrides = {}) => ({
   ...overrides,
 });
 
+const ZOMBIE_KIND_FACTORIES = {
+  fat: () => ({
+    r: 16 * 1.4,
+    hp: 34 * 2,
+    maxHp: 34 * 2,
+    speed: ZOMBIE_BASE_SPEED * 0.8,
+    xp: XP_PER_KILL + 6,
+  }),
+  small: () => ({
+    r: 16 * 0.5,
+    speed: ZOMBIE_BASE_SPEED * 2,
+    behavior: "leap",
+    leapCD: 1.1 + Math.random() * 1.6,
+    targetAng: 0,
+    xp: XP_PER_KILL + 4,
+  }),
+  brute: () => ({
+    r: 16 * 1.3,
+    hp: 34 * 3,
+    maxHp: 34 * 3,
+    speed: ZOMBIE_BASE_SPEED * 0.75,
+    behavior: "charge",
+    chargeCD: 2.5 + Math.random() * 2.5,
+    chargeDir: 0,
+    xp: XP_PER_KILL + 10,
+  }),
+  skeleton: () => ({
+    r: 12,
+    hp: SKELETON_HP,
+    maxHp: SKELETON_HP,
+    speed: ZOMBIE_BASE_SPEED,
+    xp: XP_PER_KILL + 2,
+  }),
+  ghost: () => ({
+    r: 15,
+    hp: 34,
+    maxHp: 34,
+    speed: ZOMBIE_BASE_SPEED * GHOST_SPEED_MULT,
+    intangible: true,
+    xp: XP_PER_KILL + 8,
+  }),
+  bomber: () => ({
+    r: 17,
+    hp: 34 * 1.2,
+    maxHp: 34 * 1.2,
+    mineTimer: BOMBER_MINE_DELAY,
+    xp: XP_PER_KILL + 12,
+  }),
+};
+
+const ZOMBIE_KIND_THRESHOLDS = [
+  { limit: 0.2, kind: "fat" },
+  { limit: 0.32, kind: "small" },
+  { limit: 0.44, kind: "brute" },
+  { limit: 0.55, kind: "skeleton" },
+  { limit: 0.66, kind: "ghost" },
+  { limit: 0.74, kind: "bomber" },
+];
+
+const pickDefaultZombieKind = () => {
+  const roll = Math.random();
+  for (const entry of ZOMBIE_KIND_THRESHOLDS) {
+    if (roll < entry.limit) return entry.kind;
+  }
+  return "normal";
+};
+
 export const makeZombie = (x, y, kind = null) => {
-  if (!kind) {
-    const r = Math.random();
-    if (r < 0.2) kind = "fat";
-    else if (r < 0.32) kind = "small";
-    else if (r < 0.44) kind = "brute";
-    else if (r < 0.55) kind = "skeleton";
-    else if (r < 0.66) kind = "ghost";
-    else if (r < 0.74) kind = "bomber";
-    else kind = "normal";
+  const kindToUse = kind ?? pickDefaultZombieKind();
+  const factory = ZOMBIE_KIND_FACTORIES[kindToUse];
+  if (!factory) {
+    return makeBaseZombie(x, y, kindToUse || "normal");
   }
-  if (kind === "fat") {
-    return makeBaseZombie(x, y, "fat", {
-      r: 16 * 1.4,
-      hp: 34 * 2,
-      maxHp: 34 * 2,
-      speed: ZOMBIE_BASE_SPEED * 0.8,
-      xp: XP_PER_KILL + 6,
-    });
-  }
-  if (kind === "small") {
-    return makeBaseZombie(x, y, "small", {
-      r: 16 * 0.5,
-      speed: ZOMBIE_BASE_SPEED * 2,
-      behavior: "leap",
-      leapCD: 1.1 + Math.random() * 1.6,
-      targetAng: 0,
-      xp: XP_PER_KILL + 4,
-    });
-  }
-  if (kind === "brute") {
-    return makeBaseZombie(x, y, "brute", {
-      r: 16 * 1.3,
-      hp: 34 * 3,
-      maxHp: 34 * 3,
-      speed: ZOMBIE_BASE_SPEED * 0.75,
-      behavior: "charge",
-      chargeCD: 2.5 + Math.random() * 2.5,
-      chargeDir: 0,
-      xp: XP_PER_KILL + 10,
-    });
-  }
-  if (kind === "skeleton") {
-    return makeBaseZombie(x, y, "skeleton", {
-      r: 12,
-      hp: SKELETON_HP,
-      maxHp: SKELETON_HP,
-      speed: ZOMBIE_BASE_SPEED,
-      xp: XP_PER_KILL + 2,
-    });
-  }
-  if (kind === "ghost") {
-    return makeBaseZombie(x, y, "ghost", {
-      r: 15,
-      hp: 34,
-      maxHp: 34,
-      speed: ZOMBIE_BASE_SPEED * GHOST_SPEED_MULT,
-      intangible: true,
-      xp: XP_PER_KILL + 8,
-    });
-  }
-  if (kind === "bomber") {
-    return makeBaseZombie(x, y, "bomber", {
-      r: 17,
-      hp: 34 * 1.2,
-      maxHp: 34 * 1.2,
-      mineTimer: BOMBER_MINE_DELAY,
-      xp: XP_PER_KILL + 12,
-    });
-  }
-  return makeBaseZombie(x, y, "normal");
+  return makeBaseZombie(x, y, kindToUse, factory());
 };
 
 export const makeBullet = (x, y, ang, options = {}) => ({

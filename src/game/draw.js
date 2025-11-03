@@ -6,6 +6,123 @@ import {
 } from "./constants.js";
 import { clamp, lerpColor } from "./utils.js";
 
+const drawGroundItem = (ctx, item) => {
+  switch (item.type) {
+    case "bat":
+      ctx.fillStyle = "#8b5a2b";
+      ctx.fillRect(-16, -4, 34, 8);
+      break;
+    case "pistol":
+      ctx.fillStyle = "#333";
+      ctx.fillRect(-10, -4, 20, 8);
+      ctx.fillStyle = "#999";
+      ctx.fillRect(0, -4, 6, 14);
+      break;
+    case "ammo":
+      ctx.fillStyle = "#888";
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "medkit":
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(-11, -9, 22, 18);
+      ctx.fillStyle = "#d33";
+      ctx.fillRect(-3, -7, 6, 14);
+      ctx.fillRect(-7, -3, 14, 6);
+      break;
+    case "mine":
+      ctx.fillStyle = "#444";
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "shotgun":
+      ctx.fillStyle = "#2f2f2f";
+      ctx.fillRect(-20, -5, 40, 10);
+      ctx.fillStyle = "#b91c1c";
+      ctx.fillRect(-12, -7, 12, 14);
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(6, -3, 14, 6);
+      break;
+    case "glaive":
+      ctx.save();
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(-4, -26, 8, 52);
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.moveTo(-10, -32);
+      ctx.lineTo(18, -6);
+      ctx.lineTo(-10, 20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      break;
+    default:
+      ctx.fillStyle = "#9ca3af";
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
+  }
+};
+
+const drawWeaponIcon = (ctx, weapon) => {
+  switch (weapon) {
+    case "bat":
+      ctx.fillStyle = "#8b5a2b";
+      ctx.fillRect(-14, -4, 28, 8);
+      break;
+    case "pistol":
+      ctx.fillStyle = "#333";
+      ctx.fillRect(-10, -4, 20, 8);
+      ctx.fillStyle = "#999";
+      ctx.fillRect(0, -4, 5, 12);
+      break;
+    case "shotgun":
+      ctx.fillStyle = "#2f2f2f";
+      ctx.fillRect(-16, -5, 32, 10);
+      ctx.fillStyle = "#b91c1c";
+      ctx.fillRect(-8, -7, 10, 14);
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(8, -3, 10, 6);
+      break;
+    case "glaive":
+      ctx.save();
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(-3, -20, 6, 40);
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.moveTo(-8, -26);
+      ctx.lineTo(14, -8);
+      ctx.lineTo(-8, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      break;
+    case "mine":
+      ctx.fillStyle = "#444";
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#dc2626";
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    default:
+      ctx.fillStyle = "#94a3b8";
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+  }
+};
+
 export function draw(ctx, state, mode, bestScore) {
   const p = state.player;
   const w = ctx.canvas.width;
@@ -71,53 +188,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.ellipse(0, 10, 18, 8, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (it.type === "bat") {
-      ctx.fillStyle = "#8b5a2b";
-      ctx.fillRect(-16, -4, 34, 8);
-    } else if (it.type === "pistol") {
-      ctx.fillStyle = "#333";
-      ctx.fillRect(-10, -4, 20, 8);
-      ctx.fillStyle = "#999";
-      ctx.fillRect(0, -4, 6, 14);
-    } else if (it.type === "ammo") {
-      ctx.fillStyle = "#888";
-      ctx.beginPath();
-      ctx.arc(0, 0, 9, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (it.type === "medkit") {
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(-11, -9, 22, 18);
-      ctx.fillStyle = "#d33";
-      ctx.fillRect(-3, -7, 6, 14);
-      ctx.fillRect(-7, -3, 14, 6);
-    } else if (it.type === "mine") {
-      ctx.fillStyle = "#444";
-      ctx.beginPath();
-      ctx.arc(0, 0, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#38bdf8";
-      ctx.beginPath();
-      ctx.arc(0, 0, 4, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (it.type === "shotgun") {
-      ctx.fillStyle = "#2f2f2f";
-      ctx.fillRect(-20, -5, 40, 10);
-      ctx.fillStyle = "#b91c1c";
-      ctx.fillRect(-12, -7, 12, 14);
-      ctx.fillStyle = "#facc15";
-      ctx.fillRect(6, -3, 14, 6);
-    } else if (it.type === "glaive") {
-      ctx.rotate(-Math.PI / 4);
-      ctx.fillStyle = "#1f2937";
-      ctx.fillRect(-4, -26, 8, 52);
-      ctx.fillStyle = "#38bdf8";
-      ctx.beginPath();
-      ctx.moveTo(-10, -32);
-      ctx.lineTo(18, -6);
-      ctx.lineTo(-10, 20);
-      ctx.closePath();
-      ctx.fill();
-    }
+    drawGroundItem(ctx, it);
     ctx.restore();
   }
 
@@ -439,42 +510,7 @@ export function draw(ctx, state, mode, bestScore) {
     if (wpn) {
       ctx.save();
       ctx.translate(sx + slotSize / 2, sy + slotSize / 2);
-      if (wpn === "bat") {
-        ctx.fillStyle = "#8b5a2b";
-        ctx.fillRect(-14, -4, 28, 8);
-      } else if (wpn === "pistol") {
-        ctx.fillStyle = "#333";
-        ctx.fillRect(-10, -4, 20, 8);
-        ctx.fillStyle = "#999";
-        ctx.fillRect(0, -4, 5, 12);
-      } else if (wpn === "shotgun") {
-        ctx.fillStyle = "#2f2f2f";
-        ctx.fillRect(-16, -5, 32, 10);
-        ctx.fillStyle = "#b91c1c";
-        ctx.fillRect(-8, -7, 10, 14);
-        ctx.fillStyle = "#facc15";
-        ctx.fillRect(8, -3, 10, 6);
-      } else if (wpn === "glaive") {
-        ctx.rotate(-Math.PI / 4);
-        ctx.fillStyle = "#1f2937";
-        ctx.fillRect(-3, -20, 6, 40);
-        ctx.fillStyle = "#38bdf8";
-        ctx.beginPath();
-        ctx.moveTo(-8, -26);
-        ctx.lineTo(14, -8);
-        ctx.lineTo(-8, 12);
-        ctx.closePath();
-        ctx.fill();
-      } else if (wpn === "mine") {
-        ctx.fillStyle = "#444";
-        ctx.beginPath();
-        ctx.arc(0, 0, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#dc2626";
-        ctx.beginPath();
-        ctx.arc(0, 0, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      drawWeaponIcon(ctx, wpn);
       ctx.restore();
     }
     if (p.weapon === wpn) {

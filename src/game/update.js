@@ -30,7 +30,6 @@ import {
   BOSS_SPAWN_AT,
   BOSS_ATTACK_RANGE,
   BOSS_ATTACK_DAMAGE,
-  BOSS_SPEED,
 } from "./constants.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
 import {
@@ -80,6 +79,27 @@ const hasLineOfSight = (x1, y1, x2, y2, walls) => {
     if (segmentIntersectsRect(x1, y1, x2, y2, w)) return false;
   }
   return true;
+};
+
+const ZOMBIE_SPAWN_WEIGHTS = [
+  { kind: "bomber", base: 0.04, rare: 0.08 },
+  { kind: "ghost", base: 0.08, rare: 0.1 },
+  { kind: "skeleton", base: 0.12, rare: 0.1 },
+  { kind: "brute", base: 0.08, rare: 0.05 },
+  { kind: "small", base: 0.1, rare: 0.05 },
+  { kind: "fat", base: 0.12, rare: 0 },
+];
+
+const pickZombieKindForSpawn = (rareFactor) => {
+  const rf = clamp(rareFactor, 0, 1);
+  const roll = Math.random();
+  let cumulative = 0;
+  for (const { kind, base, rare } of ZOMBIE_SPAWN_WEIGHTS) {
+    const weight = Math.max(0, base + rare * rf);
+    cumulative += weight;
+    if (roll < cumulative) return kind;
+  }
+  return "normal";
 };
 
 function getFreeSpawnNear(px, py, walls, tries = 16) {
@@ -347,6 +367,8 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   state.dayTime += dt;
   if (state.dayTime >= DAY_NIGHT_CYCLE) state.dayTime -= DAY_NIGHT_CYCLE;
 
+  const rareFactor = clamp(state.time / 240, 0, 1);
+
   const grantXp = (amount) => {
     if (!Number.isFinite(amount) || amount <= 0) return;
     p.xp += amount;
@@ -430,7 +452,6 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   state.bullets = state.bullets.filter((b) => b.life > 0);
 
   // спавн зомби
-  const rareFactor = clamp(state.time / 240, 0, 1);
   state.spawn.min = Math.max(0.2, 0.65 - state.time / 210);
   state.spawn.timer -= dt;
   if (state.spawn.timer <= 0 && state.zombies.length < ZOMBIE_MAX_ON_FIELD) {
@@ -440,37 +461,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     );
     state.spawn.timer = state.spawn.interval * rand(0.45, 1.05);
     const spot = getFreeSpawnNear(p.x, p.y, state.walls);
-    const bomberChance = 0.04 + rareFactor * 0.08;
-    const ghostChance = 0.08 + rareFactor * 0.1;
-    const skeletonChance = 0.12 + rareFactor * 0.1;
-    const bruteChance = 0.08 + rareFactor * 0.05;
-    const smallChance = 0.1 + rareFactor * 0.05;
-    const fatChance = 0.12;
-    const roll = Math.random();
-    let kind = "normal";
-    if (roll < bomberChance) kind = "bomber";
-    else if (roll < bomberChance + ghostChance) kind = "ghost";
-    else if (roll < bomberChance + ghostChance + skeletonChance) kind = "skeleton";
-    else if (roll < bomberChance + ghostChance + skeletonChance + bruteChance) kind = "brute";
-    else if (
-      roll <
-      bomberChance +
-        ghostChance +
-        skeletonChance +
-        bruteChance +
-        smallChance
-    )
-      kind = "small";
-    else if (
-      roll <
-      bomberChance +
-        ghostChance +
-        skeletonChance +
-        bruteChance +
-        smallChance +
-        fatChance
-    )
-      kind = "fat";
+    const kind = pickZombieKindForSpawn(rareFactor);
     state.zombies.push(makeZombie(spot.x, spot.y, kind));
   }
 
