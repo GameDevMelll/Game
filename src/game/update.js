@@ -21,9 +21,13 @@ import {
   DASH_SPEED,
   DASH_DURATION,
   DASH_COOLDOWN,
+  BOSS_SPAWN_AT,
+  BOSS_SPEED,
+  BOSS_SHOOT_EVERY,
+  BOSS_BULLET_SPEED,
 } from "./constants.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
-import { makeZombie, makeItem, makeWhite, makeBullet } from "./entities.js";
+import { makeZombie, makeItem, makeWhite, makeBullet, makeBoss } from "./entities.js";
 
 function circleRectCollides(cx, cy, cr, r) {
   const closeX = clamp(cx, r.x, r.x + r.w);
@@ -64,6 +68,16 @@ function getFreeSpawnNear(px, py, walls, tries = 16) {
   };
 }
 
+function getBossSpawn(px, py) {
+  // простой спавн у края, но не в углу
+  const side = Math.floor(Math.random() * 4);
+  const margin = 140;
+  if (side === 0) return { x: margin, y: clamp(py, margin, WORLD.h - margin - 80) }; // слева
+  if (side === 1) return { x: WORLD.w - margin, y: clamp(py, margin, WORLD.h - margin - 80) }; // справа
+  if (side === 2) return { x: clamp(px, margin, WORLD.w - margin), y: margin }; // сверху
+  return { x: clamp(px, margin, WORLD.w - margin), y: WORLD.h - margin - 80 }; // снизу
+}
+
 export function createInitialState(makeWalls, makePlayer) {
   const player = makePlayer();
   const walls = makeWalls();
@@ -85,6 +99,9 @@ export function createInitialState(makeWalls, makePlayer) {
     kills: 0,
     dayTime: 0,
     time: 0,
+    // босс
+    boss: null,
+    bossBullets: [],
   };
 
   // стартовые предметы вокруг игрока
@@ -108,14 +125,17 @@ export function attack(state, queueFlash) {
 
   if (p.weapon === "bat") {
     for (const z of state.zombies) {
-      if (dist2(p.x, p.y, z.x, z.y) < (p.r + 55) ** 2) {
-        z.hp -= 25 * 1.8;
+      if (dist2(p.x, p.y, z.x, z.y) < (p.r + MELEE_RANGE) ** 2) {
+        z.hp -= MELEE_DAMAGE * 1.8;
       }
     }
     for (const w of state.whites) {
-      if (dist2(p.x, p.y, w.x, w.y) < (p.r + 55) ** 2) {
-        w.hp -= 25 * 1.5;
+      if (dist2(p.x, p.y, w.x, w.y) < (p.r + MELEE_RANGE) ** 2) {
+        w.hp -= MELEE_DAMAGE * 1.5;
       }
+    }
+    if (state.boss && dist2(p.x, p.y, state.boss.x, state.boss.y) < (p.r + MELEE_RANGE + state.boss.r - 16) ** 2) {
+      state.boss.hp -= MELEE_DAMAGE * 1.3;
     }
     p.attackCD = 0.5;
     p.swing = 0.28;
@@ -186,7 +206,14 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   state.dayTime += dt;
   if (state.dayTime >= DAY_NIGHT_CYCLE) state.dayTime -= DAY_NIGHT_CYCLE;
 
-  // ========= движение игрока + рывок =========
+  // ===== ПОЯВЛЕНИЕ БОССА =====
+  if (!state.boss && state.time >= BOSS_SPAWN_AT) {
+    const spot = getBossSpawn(p.x, p.y);
+    state.boss = makeBoss(spot.x, spot.y);
+    queueFlash && queueFlash("Появился босс!");
+  }
+
+  // ===== движение игрока (фикс бесконечного бега) =====
   let dx = 0,
     dy = 0;
   const keys = state.keys;
@@ -194,30 +221,32 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   if (keys["KeyS"] || keys["ArrowDown"]) dy += 1;
   if (keys["KeyA"] || keys["ArrowLeft"]) dx -= 1;
   if (keys["KeyD"] || keys["ArrowRight"]) dx += 1;
-  let len = Math.hypot(dx, dy) || 1;
-  let moveX = dx / len;
-  let moveY = dy / len;
 
-  // обновляем направление, если игрок реально движется
+  // если реально жмём — запоминаем направление
   if (dx !== 0 || dy !== 0) {
-    p.moveX = moveX;
-    p.moveY = moveY;
+    const len = Math.hypot(dx, dy);
+    state.player.moveX = dx / len;
+    state.player.moveY = dy / len;
+  } else {
+    // если не жмём и нет активного рывка — останавливаемся
+    if (p.dashTime <= 0) {
+      state.player.moveX = 0;
+      state.player.moveY = 0;
+    }
   }
 
-  // тики рывка/кулдауна
+  // кулдауны рывка
   if (p.dashCD > 0) p.dashCD -= dt;
   if (p.dashTime > 0) p.dashTime -= dt;
 
-  // старт рывка — по Shift
+  // старт рывка по Shift
   const wantDash = keys["ShiftLeft"] || keys["ShiftRight"];
   if (wantDash && p.dashCD <= 0 && (p.moveX !== 0 || p.moveY !== 0)) {
     p.dashTime = DASH_DURATION;
     p.dashCD = DASH_COOLDOWN;
   }
 
-  // выбираем скорость: обычная или рывок
   const curSpeed = p.dashTime > 0 ? DASH_SPEED : PLAYER_SPEED;
-
   let nx = clamp(p.x + (p.moveX || 0) * curSpeed * dt, p.r, WORLD.w - p.r);
   let ny = clamp(p.y + (p.moveY || 0) * curSpeed * dt, p.r, WORLD.h - p.r);
 
@@ -258,7 +287,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     tryPickup(state, queueFlash);
   }
 
-  // пули игрока
+  // ==== пули игрока ====
   for (const b of state.bullets) {
     b.x += Math.cos(b.ang) * BULLET_SPEED * dt;
     b.y += Math.sin(b.ang) * BULLET_SPEED * dt;
@@ -269,10 +298,15 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         break;
       }
     }
+    // урон боссу
+    if (state.boss && b.life > 0 && dist2(b.x, b.y, state.boss.x, state.boss.y) < (state.boss.r + 4) ** 2) {
+      state.boss.hp -= 24;
+      b.life = 0;
+    }
   }
   state.bullets = state.bullets.filter((b) => b.life > 0);
 
-  // спавн зомби
+  // ==== спавн зомби ====
   state.spawn.timer -= dt;
   if (state.spawn.timer <= 0 && state.zombies.length < ZOMBIE_MAX_ON_FIELD) {
     state.spawn.interval = Math.max(state.spawn.min, state.spawn.interval * 0.965);
@@ -281,7 +315,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     state.zombies.push(makeZombie(spot.x, spot.y));
   }
 
-  // спавн стрелков
+  // ==== спавн стрелков ====
   if (state.time >= WHITE_START_AT) {
     state.whiteSpawn.timer -= dt;
     if (state.whiteSpawn.timer <= 0) {
@@ -292,7 +326,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     }
   }
 
-  // зомби
+  // ==== зомби ====
   for (const z of state.zombies) {
     z.age += dt;
     const ang = angleBetween(z.x, z.y, p.x, p.y);
@@ -356,7 +390,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     }
   }
 
-  // стрелки
+  // ==== стрелки ====
   for (const w of state.whites) {
     w.age += dt;
     const angToP = angleBetween(w.x, w.y, p.x, p.y);
@@ -393,7 +427,66 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     }
   }
 
-  // мины
+  // ==== босс ====
+  if (state.boss) {
+    const b = state.boss;
+    const ang = angleBetween(b.x, b.y, p.x, p.y);
+    const prevX = b.x;
+    const prevY = b.y;
+    let bx = clamp(b.x + Math.cos(ang) * BOSS_SPEED * dt, 20, WORLD.w - 20);
+    let by = clamp(b.y + Math.sin(ang) * BOSS_SPEED * dt, 20, WORLD.h - 20);
+    let blocked = false;
+    for (const w of state.walls) {
+      if (circleRectCollides(bx, by, b.r, w)) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) {
+      bx = prevX;
+      by = prevY;
+    }
+    b.x = bx;
+    b.y = by;
+
+    // контактный урон
+    if (dist2(p.x, p.y, b.x, b.y) < (b.r + p.r + 2) ** 2) {
+      p.hp -= 28 * dt;
+      if (p.hp <= 0) {
+        p.hp = 0;
+        onDeath && onDeath();
+      }
+    }
+
+    // стрельба
+    b.shootCD -= dt;
+    if (b.shootCD <= 0) {
+      const bulletsCount = 8;
+      for (let i = 0; i < bulletsCount; i++) {
+        const angB = (Math.PI * 2 * i) / bulletsCount;
+        state.bossBullets.push({
+          x: b.x,
+          y: b.y,
+          ang: angB,
+          life: 4,
+        });
+      }
+      b.shootCD = BOSS_SHOOT_EVERY;
+    }
+
+    // смерть босса
+    if (b.hp <= 0) {
+      // дропнем 3 штуки
+      state.items.push(makeItem(b.x + rand(-60, 60), b.y + rand(-60, 60), "ammo"));
+      state.items.push(makeItem(b.x + rand(-60, 60), b.y + rand(-60, 60), "medkit"));
+      state.items.push(makeItem(b.x + rand(-60, 60), b.y + rand(-60, 60), "mine"));
+      state.boss = null;
+      state.kills += 1;
+      queueFlash && queueFlash("Босс повержен!");
+    }
+  }
+
+  // ==== мины ====
   if (state.mines.length) {
     const keep = [];
     for (const m of state.mines) {
@@ -423,6 +516,9 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
           }
         }
       }
+      if (!exploded && state.boss && dist2(m.x, m.y, state.boss.x, state.boss.y) < (m.r + state.boss.r) ** 2) {
+        exploded = true;
+      }
       if (!exploded && dist2(m.x, m.y, p.x, p.y) < (m.r + p.r) ** 2) {
         exploded = true;
       }
@@ -435,6 +531,9 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         state.whites.forEach((w) => {
           if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
         });
+        if (state.boss && dist2(m.x, m.y, state.boss.x, state.boss.y) < MINE_EXPLOSION_RADIUS ** 2) {
+          state.boss.hp -= 220;
+        }
         if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
           p.hp = 0;
           onDeath && onDeath();
@@ -446,7 +545,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     state.mines = keep;
   }
 
-  // взрывы
+  // ==== взрывы ====
   if (state.explosions.length) {
     const keepEx = [];
     for (const ex of state.explosions) {
@@ -457,7 +556,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     state.explosions = keepEx;
   }
 
-  // пули врагов
+  // ==== пули врагов ====
   for (const eb of state.enemyBullets) {
     eb.x += Math.cos(eb.ang) * ENEMY_BULLET_SPEED * dt;
     eb.y += Math.sin(eb.ang) * ENEMY_BULLET_SPEED * dt;
@@ -479,16 +578,41 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   }
   state.enemyBullets = state.enemyBullets.filter((b) => b.life > 0);
 
-  // очистка
+  // ==== пули босса ====
+  for (const bb of state.bossBullets) {
+    bb.x += Math.cos(bb.ang) * BOSS_BULLET_SPEED * dt;
+    bb.y += Math.sin(bb.ang) * BOSS_BULLET_SPEED * dt;
+    bb.life -= dt;
+    for (const w of state.walls) {
+      if (circleRectCollides(bb.x, bb.y, 5, w)) {
+        bb.life = 0;
+        break;
+      }
+    }
+    if (bb.life > 0 && dist2(bb.x, bb.y, p.x, p.y) < (p.r + 5) ** 2) {
+      p.hp -= 35;
+      bb.life = 0;
+      if (p.hp <= 0) {
+        p.hp = 0;
+        onDeath && onDeath();
+      }
+    }
+  }
+  state.bossBullets = state.bossBullets.filter((b) => b.life > 0);
+
+  // ==== очистка ====
   const newZ = [];
   let died = 0;
   for (const z of state.zombies) {
     if (z.hp <= 0) {
       died++;
       const drop = Math.random();
-      if (drop < 0.25) state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "ammo"));
-      else if (drop < 0.31) state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "medkit"));
-      else if (drop < 0.322) state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "mine"));
+      if (drop < 0.25)
+        state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "ammo"));
+      else if (drop < 0.31)
+        state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "medkit"));
+      else if (drop < 0.322)
+        state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "mine"));
       continue;
     }
     if (z.age >= ZOMBIE_MAX_AGE) continue;
