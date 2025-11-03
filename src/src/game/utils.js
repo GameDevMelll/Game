@@ -1,4 +1,3 @@
-// src/game/utils.js
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const dist2 = (x1, y1, x2, y2) => {
