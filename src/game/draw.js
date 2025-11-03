@@ -3,6 +3,7 @@ import {
   NIGHT_DURATION,
   DAY_NIGHT_CYCLE,
   PLAYER_MAX_HP,
+  DASH_COOLDOWN,
 } from "./constants.js";
 import { clamp, lerpColor } from "./utils.js";
 
@@ -11,7 +12,7 @@ export function draw(ctx, state, mode, bestScore) {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
 
-  // day-night
+  // ====== day/night ======
   const t = state.dayTime % DAY_NIGHT_CYCLE;
   let nightK = 0;
   if (t < DAY_DURATION) nightK = t / DAY_DURATION;
@@ -29,7 +30,7 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
   ctx.fillRect(0, 0, w, h);
 
-  // camera
+  // ====== camera ======
   ctx.save();
   const camX = p.x - w / 2;
   const camY = p.y - h / 2;
@@ -41,7 +42,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
   }
 
-  // grid
+  // grid with transition
   const tile = 110;
   const gridCol = lerpColor(
     { r: 148, g: 163, b: 184, a: 0.55 },
@@ -237,7 +238,8 @@ export function draw(ctx, state, mode, bestScore) {
 
   ctx.restore(); // camera
 
-  // HUD: HP
+  // ====== HUD ======
+  // HP
   const hudW = 220;
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(18, 16, hudW, 30);
@@ -250,7 +252,19 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.strokeStyle = "rgba(0,0,0,0.2)";
   ctx.strokeRect(56, 22, hudW - 66, 18);
 
-  // HUD: оружие
+  // DASH бар (под HP)
+  const dashY = 50;
+  const dashW = hudW;
+  ctx.fillStyle = "rgba(15,23,42,0.35)";
+  ctx.fillRect(18, dashY, dashW, 6);
+  let dashRatio = 1;
+  if (p.dashCD > 0) {
+    dashRatio = 1 - Math.min(1, p.dashCD / DASH_COOLDOWN);
+  }
+  ctx.fillStyle = dashRatio >= 1 ? "#22c55e" : "#94a3b8";
+  ctx.fillRect(18, dashY, dashW * dashRatio, 6);
+
+  // weapon HUD
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(w - 230, 16, 210, 74);
   ctx.fillStyle = "#fff";
@@ -265,7 +279,7 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.textAlign = "left";
   ctx.fillText(`Убито: ${state.kills}`, 22, h - 40);
 
-  // инвентарь (5 слотов)
+  // инвентарь
   const invSlots = 5;
   const slotSize = 42;
   const slotGap = 4;
@@ -331,7 +345,8 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillText("Mope-like Survival", w / 2, h / 2 - 60);
     ctx.font = "16px system-ui, sans-serif";
     ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — сменить", w / 2, h / 2 - 20);
-    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 20);
+    ctx.fillText("Shift — рывок", w / 2, h / 2 + 4);
+    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 28);
   } else if (mode === "pause") {
     ctx.fillStyle = "rgba(15,23,42,0.6)";
     ctx.fillRect(0, 0, w, h);
