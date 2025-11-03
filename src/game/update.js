@@ -42,15 +42,6 @@ import {
   makeBoss,
 } from "./entities.js";
 
-export function update(state, dt, { canvas, onDeath, queueFlash }) {
-  if (!state.allowUpdate) return; 
-  const p = state.player;
-  if (!p.maxHp) p.maxHp = PLAYER_MAX_HP;
-  p.maxHp = Math.max(p.maxHp, PLAYER_MAX_HP);
-  p.hp = clamp(p.hp, 0, p.maxHp);
-  state.time += dt;
-  state.dayTime += dt;
-  if (state.dayTime >= DAY_NIGHT_CYCLE) state.dayTime -= DAY_NIGHT_CYCLE;
 
 function circleRectCollides(cx, cy, cr, r) {
   const closeX = clamp(cx, r.x, r.x + r.w);
