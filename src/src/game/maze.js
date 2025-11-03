@@ -1,6 +1,6 @@
 // src/game/maze.js
-import { clamp } from "./utils";
-import { MAZE_PASSAGE, WALL_THICKNESS, WORLD } from "./constants";
+import { clamp } from "./utils.js";
+import { MAZE_PASSAGE, WALL_THICKNESS, WORLD } from "./constants.js";
 
 export function makeWalls() {
   const walls = [];
