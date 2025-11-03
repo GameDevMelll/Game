@@ -42,3 +42,10 @@ export const MINE_EXPLOSION_RADIUS = 128;
 export const DAY_DURATION = 60;
 export const NIGHT_DURATION = 60;
 export const DAY_NIGHT_CYCLE = DAY_DURATION + NIGHT_DURATION;
+
+// босс
+export const BOSS_SPAWN_AT = 120; // секунда появления
+export const BOSS_HP = 450;
+export const BOSS_SPEED = 65;
+export const BOSS_SHOOT_EVERY = 2.5;
+export const BOSS_BULLET_SPEED = 300;
