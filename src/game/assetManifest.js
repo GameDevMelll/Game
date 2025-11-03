@@ -1,6 +1,7 @@
 // src/game/assetManifest.js
 import { TEXTURE_KEYS, SOUND_KEYS } from "./assetKeys.js";
 import zombiePng from "../assets/textures/zom-removebg-preview.png"; // твой спрайт
+import GhostPng from "../assets/textures/Ghost-removebg-preview.png";
 
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: null,
@@ -9,7 +10,7 @@ export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.VILLAGER]: null,
   [TEXTURE_KEYS.ZOMBIE]: zombiePng,        // ← ЗДЕСЬ!
   [TEXTURE_KEYS.RANGED]: null,
-  [TEXTURE_KEYS.GHOST]: null,
+  [TEXTURE_KEYS.GHOST]: GhostPng,
   [TEXTURE_KEYS.SKELETON]: null,
   [TEXTURE_KEYS.WITCH]: null,
   [TEXTURE_KEYS.BOMBER]: null,
