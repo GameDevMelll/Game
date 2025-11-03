@@ -1,9 +1,9 @@
 // src/App.jsx
 import React, { useEffect, useRef, useState } from "react";
-import { makeWalls } from "./game/maze";
-import { makePlayer } from "./game/entities";
-import { createInitialState, update } from "./game/update";
-import { draw } from "./game/draw";
+import { makeWalls } from "./game/maze.js";
+import { makePlayer } from "./game/entities.js";
+import { createInitialState, update } from "./game/update.js";
+import { draw } from "./game/draw.js";
 
 export default function App() {
   const canvasRef = useRef(null);
