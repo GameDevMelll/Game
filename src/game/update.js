@@ -84,7 +84,7 @@ export function createInitialState(makeWalls, makePlayer) {
     time: 0,
   };
 
-  // 👇 вот это как раз и пропало на GitHub
+  // стартовые предметы вокруг игрока
   const cx = player.x;
   const cy = player.y;
   state.items.push(
@@ -97,7 +97,6 @@ export function createInitialState(makeWalls, makePlayer) {
 
   return state;
 }
-
 
 export function attack(state, queueFlash) {
   const p = state.player;
@@ -432,7 +431,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     state.explosions = keepEx;
   }
 
-  // пули врагов
+  // вражеские пули
   for (const eb of state.enemyBullets) {
     eb.x += Math.cos(eb.ang) * ENEMY_BULLET_SPEED * dt;
     eb.y += Math.sin(eb.ang) * ENEMY_BULLET_SPEED * dt;
