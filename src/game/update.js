@@ -42,7 +42,7 @@ import {
   makeBoss,
 } from "./entities.js";
 
-
+// 🔹 Проверка столкновений круга с прямоугольником
 function circleRectCollides(cx, cy, cr, r) {
   const closeX = clamp(cx, r.x, r.x + r.w);
   const closeY = clamp(cy, r.y, r.y + r.h);
@@ -51,8 +51,10 @@ function circleRectCollides(cx, cy, cr, r) {
   return dx * dx + dy * dy < cr * cr;
 }
 
+// 🔹 Разница углов
 const angleDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
+// 🔹 Пересечение линий
 const linesIntersect = (x1, y1, x2, y2, x3, y3, x4, y4) => {
   const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
   if (den === 0) return false;
@@ -61,6 +63,7 @@ const linesIntersect = (x1, y1, x2, y2, x3, y3, x4, y4) => {
   return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 };
 
+// 🔹 Проверка пересечения линии с прямоугольником
 const segmentIntersectsRect = (x1, y1, x2, y2, rect) => {
   const rx1 = rect.x;
   const ry1 = rect.y;
@@ -76,6 +79,7 @@ const segmentIntersectsRect = (x1, y1, x2, y2, rect) => {
   );
 };
 
+// 🔹 Проверка прямой видимости
 const hasLineOfSight = (x1, y1, x2, y2, walls) => {
   for (const w of walls) {
     if (segmentIntersectsRect(x1, y1, x2, y2, w)) return false;
@@ -83,6 +87,7 @@ const hasLineOfSight = (x1, y1, x2, y2, walls) => {
   return true;
 };
 
+// 🔹 Поиск свободного места для спавна
 function getFreeSpawnNear(px, py, walls, tries = 16) {
   const offsetX = 140;
   const offsetY = 120;
@@ -114,6 +119,7 @@ function getFreeSpawnNear(px, py, walls, tries = 16) {
   };
 }
 
+// 🔹 Создание начального состояния
 export function createInitialState(makeWalls, makePlayer) {
   const player = makePlayer();
   const walls = makeWalls();
@@ -143,7 +149,7 @@ export function createInitialState(makeWalls, makePlayer) {
     dayTime: 0,
     time: 0,
     bossSpawned: false,
-    allowUpdate: false,
+    allowUpdate: true, // ✅ сразу разрешаем обновления
   };
 
   const cx = player.x;
@@ -158,16 +164,28 @@ export function createInitialState(makeWalls, makePlayer) {
     makeItem(cx - 200, cy + 40, "glaive")
   );
 
+  // жители
   for (let i = 0; i < INITIAL_VILLAGERS; i++) {
     const offsetAng = (Math.PI * 2 * i) / INITIAL_VILLAGERS;
     const dist = 140 + Math.random() * 120;
-    const vx = clamp(cx + Math.cos(offsetAng) * dist, WALL_THICKNESS + 60, WORLD.w - WALL_THICKNESS - 60);
-    const vy = clamp(cy + Math.sin(offsetAng) * dist, WALL_THICKNESS + 60, WORLD.h - WALL_THICKNESS - 60);
+    const vx = clamp(
+      cx + Math.cos(offsetAng) * dist,
+      WALL_THICKNESS + 60,
+      WORLD.w - WALL_THICKNESS - 60
+    );
+    const vy = clamp(
+      cy + Math.sin(offsetAng) * dist,
+      WALL_THICKNESS + 60,
+      WORLD.h - WALL_THICKNESS - 60
+    );
     state.villagers.push(makeVillager(vx, vy));
   }
 
   return state;
 }
+
+// (ниже продолжается остальной код, включая attack, update, useMedkit и т.д.)
+
 
 export function attack(state, queueFlash) {
   const p = state.player;
