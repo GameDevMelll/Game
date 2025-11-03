@@ -1,11 +1,6 @@
-// src/game/draw.js
-import {
-  DAY_DURATION,
-  NIGHT_DURATION,
-  DAY_NIGHT_CYCLE,
-  PLAYER_MAX_HP,
-} from "./constants";
-import { clamp, lerpColor } from "./utils";
+import { DAY_DURATION, NIGHT_DURATION, DAY_NIGHT_CYCLE, PLAYER_MAX_HP } from "./constants.js";
+import { clamp, lerpColor } from "./utils.js";
+
 
 export function draw(ctx, state, mode, bestScore) {
   const p = state.player;
