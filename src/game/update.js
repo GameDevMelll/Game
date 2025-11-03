@@ -30,6 +30,8 @@ function circleRectCollides(cx, cy, cr, r) {
   return dx * dx + dy * dy < cr * cr;
 }
 
+const angleDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+
 function getFreeSpawnNear(px, py, walls, tries = 16) {
   const offsetX = 140;
   const offsetY = 120;
@@ -74,6 +76,7 @@ export function createInitialState(makeWalls, makePlayer) {
     enemyBullets: [],
     mines: [],
     explosions: [],
+    slashes: [],
     walls,
     keys: {},
     mouse: { x: 0, y: 0, down: false },
@@ -88,11 +91,13 @@ export function createInitialState(makeWalls, makePlayer) {
   const cx = player.x;
   const cy = player.y;
   state.items.push(
-    { x: cx + 120, y: cy + 20, r: 12, type: "bat", id: "start-bat" },
-    { x: cx - 140, y: cy - 20, r: 12, type: "pistol", id: "start-pistol" },
-    { x: cx + 40, y: cy - 130, r: 12, type: "ammo", id: "start-ammo" },
-    { x: cx + 10, y: cy + 180, r: 12, type: "mine", id: "start-mine" },
-    { x: cx - 60, y: cy + 130, r: 12, type: "medkit", id: "start-medkit" }
+    makeItem(cx + 120, cy + 20, "bat"),
+    makeItem(cx - 140, cy - 20, "pistol"),
+    makeItem(cx + 40, cy - 130, "ammo"),
+    makeItem(cx + 10, cy + 180, "mine"),
+    makeItem(cx - 60, cy + 130, "medkit"),
+    makeItem(cx + 180, cy - 40, "shotgun"),
+    makeItem(cx - 200, cy + 40, "glaive")
   );
 
   return state;
@@ -119,6 +124,39 @@ export function attack(state, queueFlash) {
     return;
   }
 
+  if (p.weapon === "glaive") {
+    const arcRange = 150;
+    const arcRange2 = arcRange * arcRange;
+    const arcHalf = Math.PI / 3;
+    const damage = 42;
+    let hit = false;
+    const applyArc = (targets) => {
+      for (const t of targets) {
+        if (dist2(p.x, p.y, t.x, t.y) > arcRange2) continue;
+        const angToTarget = Math.atan2(t.y - p.y, t.x - p.x);
+        if (Math.abs(angleDiff(angToTarget, p.facing)) > arcHalf) continue;
+        t.hp -= damage;
+        t.x += Math.cos(p.facing) * 12;
+        t.y += Math.sin(p.facing) * 12;
+        hit = true;
+      }
+    };
+    applyArc(state.zombies);
+    applyArc(state.whites);
+    state.slashes.push({
+      x: p.x,
+      y: p.y,
+      ang: p.facing,
+      life: 0.28,
+      maxLife: 0.28,
+      radius: arcRange,
+    });
+    p.attackCD = 0.72;
+    p.swing = 0.32;
+    if (!hit) queueFlash && queueFlash("Мимо");
+    return;
+  }
+
   if (p.weapon === "pistol") {
     if (p.ammo > 0) {
       state.bullets.push(makeBullet(p.x, p.y, p.facing));
@@ -127,6 +165,29 @@ export function attack(state, queueFlash) {
     } else {
       queueFlash && queueFlash("Нет патронов");
       p.attackCD = 0.15;
+    }
+    return;
+  }
+
+  if (p.weapon === "shotgun") {
+    if (p.ammo >= 3) {
+      const pellets = 6;
+      for (let i = 0; i < pellets; i++) {
+        const spread = rand(-0.32, 0.32);
+        state.bullets.push(
+          makeBullet(p.x, p.y, p.facing + spread, {
+            damage: 18,
+            speed: BULLET_SPEED * 0.82,
+            life: 0.55,
+            radius: 4,
+          })
+        );
+      }
+      p.ammo -= 3;
+      p.attackCD = 0.58;
+    } else {
+      queueFlash && queueFlash("Нужно 3 патрона");
+      p.attackCD = 0.2;
     }
     return;
   }
@@ -159,7 +220,7 @@ export function tryPickup(state, queueFlash) {
   const p = state.player;
   for (const it of state.items) {
     if (dist2(p.x, p.y, it.x, it.y) < (p.r + PICKUP_RADIUS) ** 2) {
-      if (["bat", "pistol", "mine"].includes(it.type) && !p.weapons.includes(it.type)) {
+      if (["bat", "pistol", "mine", "shotgun", "glaive"].includes(it.type) && !p.weapons.includes(it.type)) {
         p.weapons.push(it.type);
         if (!p.weapon) p.weapon = it.type;
       }
@@ -168,6 +229,13 @@ export function tryPickup(state, queueFlash) {
       if (it.type === "mine") {
         p.mines = (p.mines || 0) + 1;
         p.weapon = "mine";
+      }
+      if (it.type === "shotgun") {
+        p.ammo += 9;
+        p.weapon = "shotgun";
+      }
+      if (it.type === "glaive") {
+        p.weapon = "glaive";
       }
       if (["bat", "pistol"].includes(it.type)) p.weapon = it.type;
       state.items = state.items.filter((i) => i.id !== it.id);
@@ -234,11 +302,13 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
 
   // пули игрока
   for (const b of state.bullets) {
-    b.x += Math.cos(b.ang) * BULLET_SPEED * dt;
-    b.y += Math.sin(b.ang) * BULLET_SPEED * dt;
+    const speed = b.speed ?? BULLET_SPEED;
+    const radius = b.radius ?? 3;
+    b.x += Math.cos(b.ang) * speed * dt;
+    b.y += Math.sin(b.ang) * speed * dt;
     b.life -= dt;
     for (const w of state.walls) {
-      if (circleRectCollides(b.x, b.y, 3, w)) {
+      if (circleRectCollides(b.x, b.y, radius, w)) {
         b.life = 0;
         break;
       }
@@ -269,12 +339,104 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   // движение зомби
   for (const z of state.zombies) {
     z.age += dt;
-    const ang = angleBetween(z.x, z.y, p.x, p.y);
-    const speed = z.speed || 140;
+    const angToPlayer = angleBetween(z.x, z.y, p.x, p.y);
+    const d2p = dist2(z.x, z.y, p.x, p.y);
+    const distP = Math.sqrt(d2p);
+    let moveAng = angToPlayer;
+    let speed = z.speed || 140;
+
+    if (!z.state) z.state = "idle";
+
+    if (z.behavior === "charge") {
+      z.chargeCD = (z.chargeCD ?? 2.5) - dt;
+      if (z.state === "idle") {
+        moveAng = angToPlayer;
+        if (z.chargeCD <= 0 && distP > 180) {
+          z.state = "windup";
+          z.stateTimer = 0.45;
+          z.chargeDir = angToPlayer;
+        }
+      } else if (z.state === "windup") {
+        moveAng = z.chargeDir ?? angToPlayer;
+        speed = (z.speed || 140) * 0.45;
+        z.stateTimer -= dt;
+        if (z.stateTimer <= 0) {
+          z.state = "charge";
+          z.stateTimer = 0.6;
+        }
+      } else if (z.state === "charge") {
+        moveAng = z.chargeDir ?? angToPlayer;
+        speed = (z.speed || 140) * 2.6;
+        z.stateTimer -= dt;
+        if (z.stateTimer <= 0) {
+          z.state = "recover";
+          z.stateTimer = 0.45;
+          z.chargeCD = 2.5 + Math.random() * 2.5;
+        }
+      } else if (z.state === "recover") {
+        moveAng = angToPlayer;
+        speed = (z.speed || 140) * 0.55;
+        z.stateTimer -= dt;
+        if (z.stateTimer <= 0) {
+          z.state = "idle";
+        }
+      }
+    } else if (z.behavior === "flank") {
+      z.strafeTimer = (z.strafeTimer ?? 1.2) - dt;
+      if (z.strafeTimer <= 0) {
+        z.strafeTimer = 1.2 + Math.random() * 1.6;
+        if (Math.random() < 0.45) z.strafeDir = (z.strafeDir || 1) * -1;
+      }
+      if (distP > 320) {
+        moveAng = angToPlayer;
+        speed = (z.speed || 140) * 1.15;
+      } else if (distP < 150) {
+        moveAng = angToPlayer + Math.PI;
+        speed = (z.speed || 140) * 1.25;
+      } else {
+        moveAng = angToPlayer + (z.strafeDir || 1) * (Math.PI / 2);
+        speed = z.speed || 140;
+      }
+    } else if (z.behavior === "leap") {
+      z.leapCD = (z.leapCD ?? 1.4) - dt;
+      if (z.state === "idle") {
+        moveAng = angToPlayer;
+        if (z.leapCD <= 0 && distP > 120) {
+          z.state = "windup";
+          z.stateTimer = 0.22;
+          z.leapAng = angToPlayer;
+          z.leapCD = 1.1 + Math.random() * 1.6;
+        }
+      } else if (z.state === "windup") {
+        moveAng = z.leapAng ?? angToPlayer;
+        speed = (z.speed || 140) * 0.25;
+        z.stateTimer -= dt;
+        if (z.stateTimer <= 0) {
+          z.state = "leaping";
+          z.stateTimer = 0.32;
+        }
+      } else if (z.state === "leaping") {
+        moveAng = z.leapAng ?? angToPlayer;
+        speed = (z.speed || 140) * 3.1;
+        z.stateTimer -= dt;
+        if (z.stateTimer <= 0) {
+          z.state = "recover";
+          z.stateTimer = 0.2;
+        }
+      } else if (z.state === "recover") {
+        moveAng = angToPlayer;
+        speed = (z.speed || 140) * 0.6;
+        z.stateTimer -= dt;
+        if (z.stateTimer <= 0) {
+          z.state = "idle";
+        }
+      }
+    }
+
     const prevX = z.x;
     const prevY = z.y;
-    let zx = clamp(z.x + Math.cos(ang) * speed * dt, 10, WORLD.w - 10);
-    let zy = clamp(z.y + Math.sin(ang) * speed * dt, 10, WORLD.h - 10);
+    let zx = clamp(z.x + Math.cos(moveAng) * speed * dt, 10, WORLD.w - 10);
+    let zy = clamp(z.y + Math.sin(moveAng) * speed * dt, 10, WORLD.h - 10);
     let blocked = false;
     for (const w of state.walls) {
       if (circleRectCollides(zx, zy, z.r, w)) {
@@ -283,7 +445,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
       }
     }
     if (blocked) {
-      const zx2 = clamp(z.x + Math.cos(ang) * speed * dt, 10, WORLD.w - 10);
+      const zx2 = clamp(z.x + Math.cos(moveAng) * speed * dt, 10, WORLD.w - 10);
       let xok = true;
       for (const w of state.walls) {
         if (circleRectCollides(zx2, z.y, z.r, w)) {
@@ -295,7 +457,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         zx = zx2;
         zy = z.y;
       } else {
-        const zy2 = clamp(z.y + Math.sin(ang) * speed * dt, 10, WORLD.h - 10);
+        const zy2 = clamp(z.y + Math.sin(moveAng) * speed * dt, 10, WORLD.h - 10);
         let yok = true;
         for (const w of state.walls) {
           if (circleRectCollides(z.x, zy2, z.r, w)) {
@@ -316,15 +478,19 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     z.y = zy;
 
     if (dist2(p.x, p.y, z.x, z.y) < (z.r + p.r + 2) ** 2) {
-      p.hp -= 20 * dt;
+      let damage = 20;
+      if (z.behavior === "charge" && z.state === "charge") damage = 42;
+      else if (z.behavior === "leap" && z.state === "leaping") damage = 28;
+      p.hp -= damage * dt;
       if (p.hp <= 0) {
         p.hp = 0;
         onDeath && onDeath();
       }
     }
     for (const b of state.bullets) {
-      if (dist2(b.x, b.y, z.x, z.y) < (z.r + 4) ** 2) {
-        z.hp -= 24;
+      const br = b.radius ?? 3;
+      if (dist2(b.x, b.y, z.x, z.y) < (z.r + br) ** 2) {
+        z.hp -= b.damage ?? 24;
         b.life = 0;
       }
     }
@@ -356,6 +522,14 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
       if (step) {
         w.x = step.x;
         w.y = step.y;
+      }
+    }
+
+    for (const b of state.bullets) {
+      const br = b.radius ?? 3;
+      if (dist2(b.x, b.y, w.x, w.y) < (w.r + br) ** 2) {
+        w.hp -= b.damage ?? 24;
+        b.life = 0;
       }
     }
 
@@ -431,6 +605,15 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     state.explosions = keepEx;
   }
 
+  if (state.slashes.length) {
+    const keepSlashes = [];
+    for (const slash of state.slashes) {
+      slash.life -= dt;
+      if (slash.life > 0) keepSlashes.push(slash);
+    }
+    state.slashes = keepSlashes;
+  }
+
   // вражеские пули
   for (const eb of state.enemyBullets) {
     eb.x += Math.cos(eb.ang) * ENEMY_BULLET_SPEED * dt;
@@ -460,9 +643,13 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     if (z.hp <= 0) {
       died++;
       const drop = Math.random();
-      if (drop < 0.25) state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "ammo"));
-      else if (drop < 0.31) state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "medkit"));
-      else if (drop < 0.322) state.items.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "mine"));
+      const dropX = p.x + rand(-120, 120);
+      const dropY = p.y + rand(-120, 120);
+      if (drop < 0.24) state.items.push(makeItem(dropX, dropY, "ammo"));
+      else if (drop < 0.3) state.items.push(makeItem(dropX, dropY, "medkit"));
+      else if (drop < 0.312) state.items.push(makeItem(dropX, dropY, "mine"));
+      else if (drop < 0.322) state.items.push(makeItem(dropX, dropY, "shotgun"));
+      else if (drop < 0.332) state.items.push(makeItem(dropX, dropY, "glaive"));
       continue;
     }
     if (z.age >= ZOMBIE_MAX_AGE) continue;

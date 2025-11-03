@@ -99,6 +99,24 @@ export function draw(ctx, state, mode, bestScore) {
       ctx.beginPath();
       ctx.arc(0, 0, 4, 0, Math.PI * 2);
       ctx.fill();
+    } else if (it.type === "shotgun") {
+      ctx.fillStyle = "#2f2f2f";
+      ctx.fillRect(-20, -5, 40, 10);
+      ctx.fillStyle = "#b91c1c";
+      ctx.fillRect(-12, -7, 12, 14);
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(6, -3, 14, 6);
+    } else if (it.type === "glaive") {
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(-4, -26, 8, 52);
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.moveTo(-10, -32);
+      ctx.lineTo(18, -6);
+      ctx.lineTo(-10, 20);
+      ctx.closePath();
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -139,6 +157,28 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
+  // slashes
+  for (const slash of state.slashes) {
+    const alpha = clamp((slash.life ?? 0) / (slash.maxLife || 0.001), 0, 1);
+    const radius = slash.radius ?? 140;
+    ctx.save();
+    ctx.translate(slash.x, slash.y);
+    ctx.rotate(slash.ang);
+    ctx.globalAlpha = alpha * 0.45;
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, -Math.PI / 3, Math.PI / 3);
+    ctx.stroke();
+    ctx.globalAlpha = alpha * 0.22;
+    ctx.strokeStyle = "#fde68a";
+    ctx.lineWidth = 30;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 0.82, -Math.PI / 3, Math.PI / 3);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // zombies
   for (const z of state.zombies) {
     ctx.save();
@@ -147,7 +187,31 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.ellipse(0, 8, 20, 10, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#7fb36a";
+    if (z.behavior === "charge" && z.state === "windup") {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = "#f97316";
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.arc(0, 0, z.r + 28, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else if (z.behavior === "leap" && z.state === "windup") {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(0, 0, z.r + 20, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    let bodyColor = "#7fb36a";
+    if (z.kind === "fat") bodyColor = "#6b8f57";
+    else if (z.kind === "small") bodyColor = "#9bd382";
+    else if (z.kind === "brute") bodyColor = "#92400e";
+    else if (z.kind === "stalker") bodyColor = "#4338ca";
+    ctx.fillStyle = bodyColor;
     ctx.beginPath();
     ctx.arc(0, 0, z.r, 0, Math.PI * 2);
     ctx.fill();
@@ -186,10 +250,11 @@ export function draw(ctx, state, mode, bestScore) {
   }
 
   // bullets
-  ctx.fillStyle = "#111";
   for (const b of state.bullets) {
+    const radius = b.radius ?? 3;
+    ctx.fillStyle = radius > 3 ? "#facc15" : "#111";
     ctx.beginPath();
-    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+    ctx.arc(b.x, b.y, radius, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -229,6 +294,26 @@ export function draw(ctx, state, mode, bestScore) {
   } else if (p.weapon === "pistol") {
     ctx.fillStyle = "#333";
     ctx.fillRect(p.r * 0.6, -3, 10, 6);
+  } else if (p.weapon === "shotgun") {
+    ctx.fillStyle = "#2f2f2f";
+    ctx.fillRect(p.r * 0.4, -4, 20, 8);
+    ctx.fillStyle = "#b91c1c";
+    ctx.fillRect(p.r * 0.4 + 6, -6, 8, 12);
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(p.r * 0.4 + 16, -3, 8, 6);
+  } else if (p.weapon === "glaive") {
+    ctx.save();
+    ctx.rotate(0.2);
+    ctx.fillStyle = "#334155";
+    ctx.fillRect(p.r * 0.1, -3, 8, 36);
+    ctx.fillStyle = "#38bdf8";
+    ctx.beginPath();
+    ctx.moveTo(p.r * 0.1 + 4, -26);
+    ctx.lineTo(p.r * 0.1 + 24, 0);
+    ctx.lineTo(p.r * 0.1 + 4, 26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   } else if (p.weapon === "mine") {
     ctx.fillStyle = "#444";
     ctx.fillRect(p.r * 0.6, -3, 10, 6);
@@ -292,6 +377,24 @@ export function draw(ctx, state, mode, bestScore) {
         ctx.fillRect(-10, -4, 20, 8);
         ctx.fillStyle = "#999";
         ctx.fillRect(0, -4, 5, 12);
+      } else if (wpn === "shotgun") {
+        ctx.fillStyle = "#2f2f2f";
+        ctx.fillRect(-16, -5, 32, 10);
+        ctx.fillStyle = "#b91c1c";
+        ctx.fillRect(-8, -7, 10, 14);
+        ctx.fillStyle = "#facc15";
+        ctx.fillRect(8, -3, 10, 6);
+      } else if (wpn === "glaive") {
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = "#1f2937";
+        ctx.fillRect(-3, -20, 6, 40);
+        ctx.fillStyle = "#38bdf8";
+        ctx.beginPath();
+        ctx.moveTo(-8, -26);
+        ctx.lineTo(14, -8);
+        ctx.lineTo(-8, 12);
+        ctx.closePath();
+        ctx.fill();
       } else if (wpn === "mine") {
         ctx.fillStyle = "#444";
         ctx.beginPath();
