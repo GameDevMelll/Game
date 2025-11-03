@@ -1,8 +1,4 @@
 
-index 5c2e08b049f26e53bf9c823e592d405560d49ba2..9213525459d5bb043e23f248ecf35c8b5bcf88ab 100644
---- a/src/App.jsx
-+++ b/src/App.jsx
-@@ -1,188 +1,263 @@
  import React, { useEffect, useRef, useState } from "react";
  import { makeWalls } from "./game/maze.js";
  import { makePlayer } from "./game/entities.js";
