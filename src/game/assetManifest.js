@@ -22,7 +22,7 @@ export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.WALL]: null,
   [TEXTURE_KEYS.PLAYER]: null,
   [TEXTURE_KEYS.VILLAGER]: null,
-  [TEXTURE_KEYS.ZOMBIE]: null,
+  [TEXTURE_KEYS.ZOMBIE]: "/textures/zombie.png",
   [TEXTURE_KEYS.RANGED]: null,
   [TEXTURE_KEYS.GHOST]: null,
   [TEXTURE_KEYS.SKELETON]: null,
