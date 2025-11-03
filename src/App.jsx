@@ -29,8 +29,6 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [flash, setFlash] = useState("");
   const [best, setBest] = useState(0);
-  const [showAssetPanel, setShowAssetPanel] = useState(false);
-  const [, forceAssetsTick] = useState(0);
 
   // создаём стейт один раз
   if (!stateRef.current) {
@@ -204,6 +202,7 @@ export default function App() {
 
   audioApiRef.current.play = playSound;
 
+  // загружаем текстуры из манифеста при монтировании
   useEffect(() => {
     let cancelled = false;
     loadConfiguredTextures(TEXTURE_MANIFEST)
@@ -219,6 +218,7 @@ export default function App() {
     };
   }, []);
 
+  // закрываем аудио-контекст при размонтировании
   useEffect(() => {
     return () => {
       if (audioCtxRef.current) {
@@ -227,6 +227,7 @@ export default function App() {
     };
   }, []);
 
+  // включаем аудио при старте игры
   useEffect(() => {
     if (mode === "play" && running) ensureAudio();
   }, [mode, running]);
@@ -318,7 +319,7 @@ export default function App() {
     };
   }, [mode]);
 
-  // цикл
+  // главный цикл
   useEffect(() => {
     let frame;
     let last = 0;
@@ -331,6 +332,7 @@ export default function App() {
       const ctx = canvas.getContext("2d");
       const dt = Math.min(0.033, (t - last) / 1000);
       last = t;
+
       if (mode === "play" && running) {
         update(stateRef.current, dt, {
           canvas,
@@ -339,8 +341,10 @@ export default function App() {
           audio: audioApiRef.current,
         });
       }
+
       draw(ctx, stateRef.current, mode, best);
 
+      // динамика аудио
       if (audioCtxRef.current && ambientGainRef.current) {
         const ctxTime = audioCtxRef.current.currentTime;
         const hostiles =
@@ -348,12 +352,17 @@ export default function App() {
           ((stateRef.current?.whites?.length || 0) * 1.5);
         const intensity = Math.min(1, hostiles / 60);
         const active = mode === "play" && running;
+
+        // фон
         const targetAmb = active ? 0.06 + intensity * 0.2 : 0.02;
         ambientGainRef.current.gain.setTargetAtTime(targetAmb, ctxTime, 0.5);
+
+        // мелодия
         if (melodyRef.current) {
           const melState = melodyStateRef.current;
           const melodyControl = melodyRef.current;
           melState.timer += dt;
+
           if (melodyControl.type === "default" && melodyControl.node) {
             if (melState.timer >= 2.4) {
               melState.timer = 0;
@@ -364,8 +373,12 @@ export default function App() {
           } else {
             melState.timer = 0;
           }
+
           const targetMel = active ? 0.02 + intensity * 0.12 : 0.0;
-          melodyControl.gain.setTargetAtTime(targetMel, ctxTime, 0.4);
+          // безопасно: вызываем только если это реальный GainNode
+          try {
+            melodyControl?.gain?.setTargetAtTime?.(targetMel, ctxTime, 0.4);
+          } catch {}
         }
       }
 
@@ -383,95 +396,8 @@ export default function App() {
           {flash}
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => setShowAssetPanel((v) => !v)}
-        className="absolute top-3 left-3 bg-slate-800/80 text-white text-xs px-3 py-2 rounded-lg border border-slate-600 hover:bg-slate-700/80 transition"
-      >
-        {showAssetPanel ? "Скрыть медиа" : "Медиа-настройки"}
-      </button>
-      {showAssetPanel && (
-        <div className="absolute bottom-3 left-3 w-80 max-h-[72vh] overflow-y-auto bg-slate-900/90 text-white rounded-xl border border-slate-700 shadow-xl p-4 space-y-4 pointer-events-auto">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">Настройка медиа</span>
-            <button
-              type="button"
-              onClick={() => setShowAssetPanel(false)}
-              className="text-slate-300 hover:text-white text-lg leading-none"
-              aria-label="Закрыть"
-            >
-              ×
-            </button>
-          </div>
-          <p className="text-xs text-slate-300">
-            Загрузите свои изображения и звуки, чтобы заменить графику и эффекты в игре. Файлы применяются мгновенно.
-          </p>
-          <div className="space-y-4">
-            <div>
-              <div className="text-sm font-medium mb-2">Текстуры</div>
-              <div className="space-y-3">
-                {TEXTURE_OPTIONS.map((opt) => {
-                  const tex = textures[opt.key];
-                  return (
-                    <div key={opt.key} className="text-xs text-slate-200">
-                      <label className="block mb-1 font-medium">{opt.label}</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={onTextureChange(opt.key)}
-                          className="flex-1 text-[11px] file:mr-2 file:px-2 file:py-1 file:border-0 file:rounded file:bg-slate-700 file:text-white"
-                        />
-                        {tex && (
-                          <button
-                            type="button"
-                            onClick={() => clearTexture(opt.key)}
-                            className="px-2 py-1 rounded bg-slate-700/60 hover:bg-slate-600 text-[11px]"
-                          >
-                            Сброс
-                          </button>
-                        )}
-                      </div>
-                      {tex?.name && <div className="mt-1 text-[11px] text-slate-400">{tex.name}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-2">Звуки</div>
-              <div className="space-y-3">
-                {SOUND_OPTIONS.map((opt) => {
-                  const sound = sounds[opt.key];
-                  return (
-                    <div key={opt.key} className="text-xs text-slate-200">
-                      <label className="block mb-1 font-medium">{opt.label}</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          accept="audio/*"
-                          onChange={onSoundChange(opt.key)}
-                          className="flex-1 text-[11px] file:mr-2 file:px-2 file:py-1 file:border-0 file:rounded file:bg-slate-700 file:text-white"
-                        />
-                        {sound && (
-                          <button
-                            type="button"
-                            onClick={() => clearSound(opt.key)}
-                            className="px-2 py-1 rounded bg-slate-700/60 hover:bg-slate-600 text-[11px]"
-                          >
-                            Сброс
-                          </button>
-                        )}
-                      </div>
-                      {sound?.name && <div className="mt-1 text-[11px] text-slate-400">{sound.name}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
+      {/* Панель управления (подсказки) */}
       <div className="absolute top-3 right-3 bg-slate-900/50 text-white text-xs rounded-lg px-3 py-2 pointer-events-none backdrop-blur">
         <div className="font-semibold mb-1">Управление</div>
         <div>WASD / стрелки — движение</div>
