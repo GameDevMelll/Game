@@ -1,4 +1,4 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+
 diff --git a/src/game/update.js b/src/game/update.js
 index 4d9ff8b0c90d11ed636d637a049f7db22da1217c..1ae440b37dcaf56a20a71238c071e8e9a6982ba7 100644
 --- a/src/game/update.js
