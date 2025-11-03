@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-// ========================= helpers =========================
+// ============= helpers =============
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rand = (a, b) => a + Math.random() * (b - a);
 const dist2 = (x1, y1, x2, y2) => {
@@ -9,8 +9,19 @@ const dist2 = (x1, y1, x2, y2) => {
   return dx * dx + dy * dy;
 };
 const angleBetween = (x1, y1, x2, y2) => Math.atan2(y2 - y1, x2 - x1);
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerpColor = (c1, c2, t) => {
+  const r = Math.round(lerp(c1.r, c2.r, t));
+  const g = Math.round(lerp(c1.g, c2.g, t));
+  const b = Math.round(lerp(c1.b, c2.b, t));
+  if (c1.a != null || c2.a != null) {
+    const a = lerp(c1.a ?? 1, c2.a ?? 1, t);
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+  return `rgb(${r}, ${g}, ${b})`;
+};
 
-// ========================= constants =========================
+// ============= constants =============
 const WORLD = { w: 2400, h: 1800 };
 const PLAYER_SPEED = 230;
 const PLAYER_DIAM = 34;
@@ -29,7 +40,7 @@ const ZOMBIE_HARD_CAP = 50;
 const MAZE_PASSAGE = PLAYER_DIAM * 2;
 const WALL_THICKNESS = 42;
 
-// белые стрелки
+// shooters
 const WHITE_START_AT = 30;
 const WHITE_SPAWN_EVERY = 4.0;
 const WHITE_SPAWN_MIN = 1.0;
@@ -38,10 +49,15 @@ const WHITE_MAX_AGE = 20;
 const WHITE_HARD_CAP = 20;
 const ENEMY_BULLET_SPEED = 380;
 
-// мины
-const MINE_EXPLOSION_RADIUS = 128; // увеличили радиус в 2 раза
+// mines
+const MINE_EXPLOSION_RADIUS = 128;
 
-// ========================= maze / walls =========================
+// day/night
+const DAY_DURATION = 60;
+const NIGHT_DURATION = 60;
+const DAY_NIGHT_CYCLE = DAY_DURATION + NIGHT_DURATION;
+
+// ============= maze =============
 function makeWalls() {
   const walls = [];
   const corridor = MAZE_PASSAGE;
@@ -53,7 +69,6 @@ function makeWalls() {
   const C = Math.max(3, cols);
   const R = Math.max(3, rows);
 
-  // DFS-лабиринт по сетке
   const cells = [];
   for (let y = 0; y < R; y++) {
     const row = [];
@@ -66,9 +81,9 @@ function makeWalls() {
   const stack = [];
   const startX = Math.floor(C / 2);
   const startY = Math.floor(R / 2);
-  let cur = cells[startY][startX];
-  cur.visited = true;
-  stack.push(cur);
+  const startCell = cells[startY][startX];
+  startCell.visited = true;
+  stack.push(startCell);
   while (stack.length) {
     const cell = stack[stack.length - 1];
     const { x, y } = cell;
@@ -83,21 +98,30 @@ function makeWalls() {
     }
     const pick = nbs[Math.floor(Math.random() * nbs.length)];
     const nxt = cells[pick.ny][pick.nx];
-    if (pick.dir === "n") { cell.n = false; nxt.s = false; }
-    else if (pick.dir === "e") { cell.e = false; nxt.w = false; }
-    else if (pick.dir === "s") { cell.s = false; nxt.n = false; }
-    else if (pick.dir === "w") { cell.w = false; nxt.e = false; }
+    if (pick.dir === "n") {
+      cell.n = false;
+      nxt.s = false;
+    } else if (pick.dir === "e") {
+      cell.e = false;
+      nxt.w = false;
+    } else if (pick.dir === "s") {
+      cell.s = false;
+      nxt.n = false;
+    } else if (pick.dir === "w") {
+      cell.w = false;
+      nxt.e = false;
+    }
     nxt.visited = true;
     stack.push(nxt);
   }
 
-  // внешняя рамка лабиринта
+  // outer frame
   walls.push({ x: offsetX, y: offsetY, w: WORLD.w - offsetX * 2, h: WALL_THICKNESS });
   walls.push({ x: offsetX, y: WORLD.h - offsetY - 80, w: WORLD.w - offsetX * 2, h: WALL_THICKNESS });
   walls.push({ x: offsetX, y: offsetY, w: WALL_THICKNESS, h: WORLD.h - offsetY * 2 - 80 });
   walls.push({ x: WORLD.w - offsetX - WALL_THICKNESS, y: offsetY, w: WALL_THICKNESS, h: WORLD.h - offsetY * 2 - 80 });
 
-  // длинные горизонтальные стены
+  // long horizontal walls
   for (let y = 0; y < R; y++) {
     let runStart = null;
     for (let x = 0; x < C; x++) {
@@ -107,13 +131,13 @@ function makeWalls() {
       const endOfRow = x === C - 1;
       if ((!hasN || endOfRow) && runStart !== null) {
         const startXPix = offsetX + runStart * cellSize;
-        const endXPix = offsetX + (endOfRow && hasN ? (x + 1) : x) * cellSize;
+        const endXPix = offsetX + (endOfRow && hasN ? x + 1 : x) * cellSize;
         walls.push({ x: startXPix, y: offsetY + y * cellSize, w: endXPix - startXPix, h: WALL_THICKNESS });
         runStart = null;
       }
     }
   }
-  // длинные вертикальные стены
+  // long vertical walls
   for (let x = 0; x < C; x++) {
     let runStart = null;
     for (let y = 0; y < R; y++) {
@@ -123,14 +147,14 @@ function makeWalls() {
       const endOfCol = y === R - 1;
       if ((!hasW || endOfCol) && runStart !== null) {
         const startYPix = offsetY + runStart * cellSize;
-        const endYPix = offsetY + (endOfCol && hasW ? (y + 1) : y) * cellSize;
+        const endYPix = offsetY + (endOfCol && hasW ? y + 1 : y) * cellSize;
         walls.push({ x: offsetX + x * cellSize, y: startYPix, w: WALL_THICKNESS, h: endYPix - startYPix });
         runStart = null;
       }
     }
   }
 
-  // вырезаем центр под игрока
+  // clear center for player spawn
   return walls.filter((w) => {
     const cx = clamp(WORLD.w / 2, w.x, w.x + w.w);
     const cy = clamp(WORLD.h / 2, w.y, w.y + w.h);
@@ -140,27 +164,42 @@ function makeWalls() {
   });
 }
 
-// ========================= entities =========================
+// ============= entities =============
 const makePlayer = () => ({
   x: WORLD.w / 2,
   y: WORLD.h / 2,
   r: 17,
   hp: PLAYER_MAX_HP,
   facing: 0,
-  weapon: "fists",
-  weapons: ["fists"],
+  weapon: null,
+  weapons: [],
   ammo: 0,
   attackCD: 0,
   swing: 0,
   mines: 0,
 });
 
-const makeZombie = (x, y) => ({ x, y, r: 16, hp: 34, age: 0 });
+const makeZombie = (x, y, kind = null) => {
+  // 15% fat, 15% small, others normal
+  if (!kind) {
+    const r = Math.random();
+    if (r < 0.15) kind = "fat";
+    else if (r < 0.3) kind = "small";
+    else kind = "normal";
+  }
+  if (kind === "fat") {
+    return { x, y, r: 16 * 1.4, hp: 34 * 2, maxHp: 34 * 2, speed: ZOMBIE_BASE_SPEED * 0.8, age: 0, kind: "fat" };
+  }
+  if (kind === "small") {
+    return { x, y, r: 16 * 0.5, hp: 34, maxHp: 34, speed: ZOMBIE_BASE_SPEED * 2, age: 0, kind: "small" };
+  }
+  return { x, y, r: 16, hp: 34, maxHp: 34, speed: ZOMBIE_BASE_SPEED, age: 0, kind: "normal" };
+};
 const makeBullet = (x, y, ang) => ({ x, y, ang, life: 1.2 });
 const makeItem = (x, y, type) => ({ x, y, r: 12, type, id: Math.random().toString(36).slice(2) });
 const makeWhite = (x, y) => ({ x, y, r: 16, hp: 28, age: 0, shootCD: 1.6 });
 
-// ========================= component =========================
+// ============= component =============
 export default function Game() {
   const canvasRef = useRef(null);
   const playerRef = useRef(makePlayer());
@@ -177,25 +216,60 @@ export default function Game() {
   const explosionsRef = useRef([]);
   const wallsRef = useRef(makeWalls());
   const killsRef = useRef(0);
+  const dayTimeRef = useRef(0);
   const timeRef = useRef(0);
-  const [running, setRunning] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [mode, setMode] = useState("start");
   const [flash, setFlash] = useState("");
+  const [best, setBest] = useState(0);
+
+  // load best
+  useEffect(() => {
+    try {
+      const b = Number(localStorage.getItem("ms_best") || 0);
+      if (!Number.isNaN(b)) setBest(b);
+    } catch (e) {
+      /* ignore */
+    }
+  }, []);
 
   const queueFlash = (msg) => {
     setFlash(msg);
     setTimeout(() => setFlash(""), 1100);
   };
 
-  // ===== input =====
+  // input
   useEffect(() => {
     const keyHandler = (e) => {
       keysRef.current[e.code] = e.type === "keydown";
       const p = playerRef.current;
-      if (!running && e.type === "keydown" && e.code === "KeyR") {
+
+      // start
+      if (mode === "start" && e.type === "keydown" && (e.code === "Space" || e.code === "Enter")) {
+        startGame();
+        return;
+      }
+
+      // pause
+      if (e.type === "keydown" && e.code === "Escape") {
+        if (mode === "play") {
+          setMode("pause");
+          setRunning(false);
+        } else if (mode === "pause") {
+          setMode("play");
+          setRunning(true);
+        }
+        return;
+      }
+
+      // restart on death
+      if (mode === "dead" && e.type === "keydown" && e.code === "KeyR") {
         restart();
         return;
       }
-      if (e.type === "keydown" && e.code === "KeyQ" && running) {
+
+      // switch weapon (Q)
+      if (e.type === "keydown" && e.code === "KeyQ" && mode === "play") {
         if (p.weapons.length > 1) {
           const idx = p.weapons.indexOf(p.weapon);
           p.weapon = p.weapons[(idx + 1) % p.weapons.length];
@@ -203,14 +277,20 @@ export default function Game() {
         }
       }
     };
+
     const mouseMove = (e) => {
       if (!canvasRef.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
       mouseRef.current.x = e.clientX - rect.left;
       mouseRef.current.y = e.clientY - rect.top;
     };
-    const mouseDown = () => (mouseRef.current.down = true);
-    const mouseUp = () => (mouseRef.current.down = false);
+    const mouseDown = () => {
+      mouseRef.current.down = true;
+      if (mode === "start") startGame();
+    };
+    const mouseUp = () => {
+      mouseRef.current.down = false;
+    };
 
     window.addEventListener("keydown", keyHandler);
     window.addEventListener("keyup", keyHandler);
@@ -224,9 +304,9 @@ export default function Game() {
       window.removeEventListener("mousedown", mouseDown);
       window.removeEventListener("mouseup", mouseUp);
     };
-  }, [running]);
+  }, [mode]);
 
-  // ===== init =====
+  // init
   useEffect(() => {
     for (let i = 0; i < 6; i++) {
       zombiesRef.current.push(makeZombie(rand(400, WORLD.w - 400), rand(260, WORLD.h - 260)));
@@ -238,7 +318,7 @@ export default function Game() {
     itemsRef.current.push(makeItem(WORLD.w / 2 - 60, WORLD.h / 2 + 130, "medkit"));
   }, []);
 
-  // ===== loop =====
+  // loop
   useEffect(() => {
     let frame;
     let last = 0;
@@ -251,16 +331,34 @@ export default function Game() {
       const ctx = canvas.getContext("2d");
       const dt = Math.min(0.033, (t - last) / 1000);
       last = t;
-      if (running) update(dt);
-      draw(ctx, running);
+      if (mode === "play" && running) update(dt, () => onDeath());
+      draw(ctx, mode, best);
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
-  }, [running]);
+  }, [mode, running, best]);
 
-  // ===== restart =====
+  function startGame() {
+    setMode("play");
+    setRunning(true);
+  }
+
+  function onDeath() {
+    setRunning(false);
+    setMode("dead");
+    const kills = killsRef.current || 0;
+    setBest((prev) => {
+      const next = kills > prev ? kills : prev;
+      try {
+        localStorage.setItem("ms_best", String(next));
+      } catch (e) {}
+      return next;
+    });
+  }
+
   function restart() {
+    dayTimeRef.current = 0;
     playerRef.current = makePlayer();
     zombiesRef.current = [];
     bulletsRef.current = [];
@@ -282,27 +380,25 @@ export default function Game() {
     itemsRef.current.push(makeItem(WORLD.w / 2 + 40, WORLD.h / 2 - 130, "ammo"));
     itemsRef.current.push(makeItem(WORLD.w / 2 + 10, WORLD.h / 2 + 180, "mine"));
     itemsRef.current.push(makeItem(WORLD.w / 2 - 60, WORLD.h / 2 + 130, "medkit"));
+    setMode("play");
     setRunning(true);
     setFlash("");
   }
 
-  // ===== actions =====
+  // ============= actions =============
   function attack(p) {
     if (p.attackCD > 0) return;
-    // melee
-    if (["fists", "bat"].includes(p.weapon)) {
+    if (!p.weapon) return;
+    // bat
+    if (p.weapon === "bat") {
       for (const z of zombiesRef.current) {
-        if (dist2(p.x, p.y, z.x, z.y) < (p.r + MELEE_RANGE) ** 2) {
-          z.hp -= p.weapon === "bat" ? MELEE_DAMAGE * 1.8 : MELEE_DAMAGE;
-        }
+        if (dist2(p.x, p.y, z.x, z.y) < (p.r + MELEE_RANGE) ** 2) z.hp -= MELEE_DAMAGE * 1.8;
       }
       for (const w of whitesRef.current) {
-        if (dist2(p.x, p.y, w.x, w.y) < (p.r + MELEE_RANGE) ** 2) {
-          w.hp -= p.weapon === "bat" ? MELEE_DAMAGE * 1.5 : MELEE_DAMAGE * 0.7;
-        }
+        if (dist2(p.x, p.y, w.x, w.y) < (p.r + MELEE_RANGE) ** 2) w.hp -= MELEE_DAMAGE * 1.5;
       }
-      p.attackCD = p.weapon === "bat" ? 0.5 : 0.35;
-      p.swing = p.weapon === "bat" ? 0.28 : 0.14;
+      p.attackCD = 0.5;
+      p.swing = 0.28;
       return;
     }
     // pistol
@@ -325,9 +421,8 @@ export default function Game() {
         p.attackCD = 0.3;
         queueFlash("Мина установлена (3с до активации)");
         if (p.mines <= 0) {
-          if (p.weapons.includes("pistol")) p.weapon = "pistol";
-          else if (p.weapons.includes("bat")) p.weapon = "bat";
-          else p.weapon = "fists";
+          if (p.weapons.length > 0) p.weapon = p.weapons[0];
+          else p.weapon = null;
         }
       } else {
         queueFlash("Нет мин");
@@ -341,6 +436,7 @@ export default function Game() {
       if (dist2(p.x, p.y, it.x, it.y) < (p.r + PICKUP_RADIUS) ** 2) {
         if (["bat", "pistol", "mine"].includes(it.type) && !p.weapons.includes(it.type)) {
           p.weapons.push(it.type);
+          if (!p.weapon) p.weapon = it.type;
         }
         if (it.type === "ammo") p.ammo += 12;
         if (it.type === "medkit") p.hp = clamp(p.hp + 35, 0, PLAYER_MAX_HP);
@@ -356,7 +452,7 @@ export default function Game() {
     }
   }
 
-  // ===== collisions =====
+  // ============= collisions =============
   function circleRectCollides(cx, cy, cr, r) {
     const closeX = clamp(cx, r.x, r.x + r.w);
     const closeY = clamp(cy, r.y, r.y + r.h);
@@ -374,7 +470,6 @@ export default function Game() {
     const innerMaxY = WORLD.h - offsetY - 80 - WALL_THICKNESS - 6;
     const minDist = 280;
     const maxDist = 460;
-    const margin = 12;
     for (let i = 0; i < tries; i++) {
       const ang = rand(0, Math.PI * 2);
       const dist = rand(minDist, maxDist);
@@ -384,7 +479,10 @@ export default function Game() {
       sy = clamp(sy, innerMinY, innerMaxY);
       let hit = false;
       for (const w of walls) {
-        if (circleRectCollides(sx, sy, 30, w)) { hit = true; break; }
+        if (circleRectCollides(sx, sy, 30, w)) {
+          hit = true;
+          break;
+        }
       }
       if (!hit) return { x: sx, y: sy };
     }
@@ -394,15 +492,18 @@ export default function Game() {
     };
   }
 
-  // ===== update =====
-  function update(dt) {
+  // ============= update =============
+  function update(dt, deathCb) {
     const p = playerRef.current;
     const keys = keysRef.current;
     const mouse = mouseRef.current;
     timeRef.current += dt;
+    dayTimeRef.current += dt;
+    if (dayTimeRef.current >= DAY_NIGHT_CYCLE) dayTimeRef.current -= DAY_NIGHT_CYCLE;
 
     // player move
-    let dx = 0, dy = 0;
+    let dx = 0,
+      dy = 0;
     if (keys["KeyW"] || keys["ArrowUp"]) dy -= 1;
     if (keys["KeyS"] || keys["ArrowDown"]) dy += 1;
     if (keys["KeyA"] || keys["ArrowLeft"]) dx -= 1;
@@ -415,11 +516,14 @@ export default function Game() {
         const nxOnly = clamp(p.x + (dx / len) * PLAYER_SPEED * dt, p.r, WORLD.w - p.r);
         const nyOnly = clamp(p.y + (dy / len) * PLAYER_SPEED * dt, p.r, WORLD.h - p.r);
         if (!circleRectCollides(nxOnly, p.y, p.r, w)) {
-          nx = nxOnly; ny = p.y;
+          nx = nxOnly;
+          ny = p.y;
         } else if (!circleRectCollides(p.x, nyOnly, p.r, w)) {
-          nx = p.x; ny = nyOnly;
+          nx = p.x;
+          ny = nyOnly;
         } else {
-          nx = p.x; ny = p.y;
+          nx = p.x;
+          ny = p.y;
         }
       }
     }
@@ -445,7 +549,7 @@ export default function Game() {
     // pickup
     if (keys["KeyE"]) tryPickup(p);
 
-    // bullets (player)
+    // bullets
     for (const b of bulletsRef.current) {
       b.x += Math.cos(b.ang) * BULLET_SPEED * dt;
       b.y += Math.sin(b.ang) * BULLET_SPEED * dt;
@@ -459,57 +563,69 @@ export default function Game() {
     }
     bulletsRef.current = bulletsRef.current.filter((b) => b.life > 0);
 
-    // spawn zombies (accelerating)
+    // spawn zombies
     spawnRef.current.timer -= dt;
     if (spawnRef.current.timer <= 0 && zombiesRef.current.length < ZOMBIE_MAX_ON_FIELD) {
       spawnRef.current.interval = Math.max(spawnRef.current.min, spawnRef.current.interval * 0.965);
       spawnRef.current.timer = spawnRef.current.interval * rand(0.5, 1.1);
-      const free = getFreeSpawnNear(p.x, p.y, wallsRef.current);
-      zombiesRef.current.push(makeZombie(free.x, free.y));
+      const spot = getFreeSpawnNear(p.x, p.y, wallsRef.current);
+      zombiesRef.current.push(makeZombie(spot.x, spot.y));
     }
 
-    // spawn white shooters (after 30s)
+    // spawn shooters
     if (timeRef.current >= WHITE_START_AT) {
       whiteSpawnRef.current.timer -= dt;
       if (whiteSpawnRef.current.timer <= 0) {
         whiteSpawnRef.current.interval = Math.max(whiteSpawnRef.current.min, whiteSpawnRef.current.interval * 0.97);
         whiteSpawnRef.current.timer = whiteSpawnRef.current.interval * rand(0.6, 1.1);
-        const free = getFreeSpawnNear(p.x, p.y, wallsRef.current);
-        whitesRef.current.push(makeWhite(free.x, free.y));
+        const spot = getFreeSpawnNear(p.x, p.y, wallsRef.current);
+        whitesRef.current.push(makeWhite(spot.x, spot.y));
       }
     }
 
-    // zombies AI (simple follow + slide)
+    // zombies follow
     for (const z of zombiesRef.current) {
       z.age += dt;
       const ang = angleBetween(z.x, z.y, p.x, p.y);
-      const speed = ZOMBIE_BASE_SPEED;
+      const speed = z.speed || ZOMBIE_BASE_SPEED;
       const prevX = z.x;
       const prevY = z.y;
       let zx = clamp(z.x + Math.cos(ang) * speed * dt, 10, WORLD.w - 10);
       let zy = clamp(z.y + Math.sin(ang) * speed * dt, 10, WORLD.h - 10);
-      let collided = false;
+      let blocked = false;
       for (const w of wallsRef.current) {
-        if (circleRectCollides(zx, zy, z.r, w)) { collided = true; break; }
+        if (circleRectCollides(zx, zy, z.r, w)) {
+          blocked = true;
+          break;
+        }
       }
-      if (collided) {
+      if (blocked) {
         const zx2 = clamp(z.x + Math.cos(ang) * speed * dt, 10, WORLD.w - 10);
         let xok = true;
         for (const w of wallsRef.current) {
-          if (circleRectCollides(zx2, z.y, z.r, w)) { xok = false; break; }
+          if (circleRectCollides(zx2, z.y, z.r, w)) {
+            xok = false;
+            break;
+          }
         }
         if (xok) {
-          zx = zx2; zy = z.y;
+          zx = zx2;
+          zy = z.y;
         } else {
           const zy2 = clamp(z.y + Math.sin(ang) * speed * dt, 10, WORLD.h - 10);
           let yok = true;
           for (const w of wallsRef.current) {
-            if (circleRectCollides(z.x, zy2, z.r, w)) { yok = false; break; }
+            if (circleRectCollides(z.x, zy2, z.r, w)) {
+              yok = false;
+              break;
+            }
           }
           if (yok) {
-            zx = z.x; zy = zy2;
+            zx = z.x;
+            zy = zy2;
           } else {
-            zx = prevX; zy = prevY;
+            zx = prevX;
+            zy = prevY;
           }
         }
       }
@@ -520,11 +636,9 @@ export default function Game() {
         p.hp -= 20 * dt;
         if (p.hp <= 0) {
           p.hp = 0;
-          setRunning(false);
-          queueFlash("Вы погибли. Нажмите R, чтобы перезапустить.");
+          deathCb();
         }
       }
-
       for (const b of bulletsRef.current) {
         if (dist2(b.x, b.y, z.x, z.y) < (z.r + 4) ** 2) {
           z.hp -= 24;
@@ -533,7 +647,7 @@ export default function Game() {
       }
     }
 
-    // white shooters AI
+    // shooters AI
     for (const w of whitesRef.current) {
       w.age += dt;
       const angToP = angleBetween(w.x, w.y, p.x, p.y);
@@ -550,10 +664,16 @@ export default function Game() {
       };
       if (d2p < 200 * 200) {
         const step = tryStep(angToP + Math.PI);
-        if (step) { wx = step.x; wy = step.y; }
+        if (step) {
+          wx = step.x;
+          wy = step.y;
+        }
       } else if (d2p > 360 * 360) {
         const step = tryStep(angToP);
-        if (step) { wx = step.x; wy = step.y; }
+        if (step) {
+          wx = step.x;
+          wy = step.y;
+        }
       }
       w.x = wx;
       w.y = wy;
@@ -566,7 +686,7 @@ export default function Game() {
       }
     }
 
-    // mines trigger (with arming & contact)
+    // mines
     if (minesRef.current.length) {
       const keep = [];
       for (const m of minesRef.current) {
@@ -580,36 +700,37 @@ export default function Game() {
           keep.push(m);
           continue;
         }
-        // активная мина — взрыв ТОЛЬКО при касании
         let exploded = false;
         for (const z of zombiesRef.current) {
-          if (dist2(m.x, m.y, z.x, z.y) < (m.r + z.r) * (m.r + z.r)) { exploded = true; break; }
+          if (dist2(m.x, m.y, z.x, z.y) < (m.r + z.r) ** 2) {
+            exploded = true;
+            break;
+          }
         }
         if (!exploded) {
           for (const w of whitesRef.current) {
-            if (dist2(m.x, m.y, w.x, w.y) < (m.r + w.r) * (m.r + w.r)) { exploded = true; break; }
+            if (dist2(m.x, m.y, w.x, w.y) < (m.r + w.r) ** 2) {
+              exploded = true;
+              break;
+            }
           }
         }
-        const pnow = playerRef.current;
-        if (!exploded && dist2(m.x, m.y, pnow.x, pnow.y) < (m.r + pnow.r) * (m.r + pnow.r)) {
+        const curP = playerRef.current;
+        if (!exploded && dist2(m.x, m.y, curP.x, curP.y) < (m.r + curP.r) ** 2) {
           exploded = true;
         }
         if (exploded) {
-          // визуальный эффект
           explosionsRef.current.push({ x: m.x, y: m.y, r: 0, life: 0.35 });
-          // урон всем внутри большого радиуса
           zombiesRef.current.forEach((z) => {
-            if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS * MINE_EXPLOSION_RADIUS) z.hp = 0;
+            if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
           });
           whitesRef.current.forEach((w) => {
-            if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS * MINE_EXPLOSION_RADIUS) w.hp = 0;
+            if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
           });
-          if (dist2(m.x, m.y, pnow.x, pnow.y) < MINE_EXPLOSION_RADIUS * MINE_EXPLOSION_RADIUS) {
-            pnow.hp = 0;
-            setRunning(false);
-            queueFlash("Вы подорвались на мине");
+          if (dist2(m.x, m.y, curP.x, curP.y) < MINE_EXPLOSION_RADIUS ** 2) {
+            curP.hp = 0;
+            deathCb();
           }
-          // мина одноразовая — не пушим её в keep
         } else {
           keep.push(m);
         }
@@ -617,12 +738,12 @@ export default function Game() {
       minesRef.current = keep;
     }
 
-    // анимация взрывов
+    // explosions anim
     if (explosionsRef.current.length) {
       const keepEx = [];
       for (const ex of explosionsRef.current) {
         ex.life -= dt;
-        ex.r += 420 * dt; // быстро растёт
+        ex.r += 420 * dt;
         if (ex.life > 0) keepEx.push(ex);
       }
       explosionsRef.current = keepEx;
@@ -644,8 +765,7 @@ export default function Game() {
         eb.life = 0;
         if (p.hp <= 0) {
           p.hp = 0;
-          setRunning(false);
-          queueFlash("Вы погибли. Нажмите R, чтобы перезапустить.");
+          deathCb();
         }
       }
     }
@@ -653,27 +773,21 @@ export default function Game() {
 
     // cleanup
     const newZ = [];
-    let diedByPlayer = 0;
+    let died = 0;
     for (const z of zombiesRef.current) {
       if (z.hp <= 0) {
-        diedByPlayer++;
-        const dropRoll = Math.random();
-        if (dropRoll < 0.25) {
-          itemsRef.current.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "ammo"));
-        } else if (dropRoll < 0.31) {
-          itemsRef.current.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "medkit"));
-        } else if (dropRoll < 0.322) {
-          itemsRef.current.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "mine"));
-        }
+        died++;
+        const drop = Math.random();
+        if (drop < 0.25) itemsRef.current.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "ammo"));
+        else if (drop < 0.31) itemsRef.current.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "medkit"));
+        else if (drop < 0.322) itemsRef.current.push(makeItem(p.x + rand(-120, 120), p.y + rand(-120, 120), "mine"));
         continue;
       }
-      if (z.age >= ZOMBIE_MAX_AGE) {
-        continue;
-      }
+      if (z.age >= ZOMBIE_MAX_AGE) continue;
       newZ.push(z);
     }
     zombiesRef.current = newZ;
-    if (diedByPlayer > 0) killsRef.current += diedByPlayer;
+    if (died > 0) killsRef.current += died;
 
     whitesRef.current = whitesRef.current.filter((w) => w.hp > 0 && w.age < WHITE_MAX_AGE);
 
@@ -681,15 +795,30 @@ export default function Game() {
     if (whitesRef.current.length > WHITE_HARD_CAP) whitesRef.current.length = WHITE_HARD_CAP;
   }
 
-  // ===== draw =====
-  function draw(ctx, isRunning) {
+  // ============= draw =============
+  function draw(ctx, modeNow, bestScore) {
+    const t = dayTimeRef.current % DAY_NIGHT_CYCLE;
+    let nightK = 0;
+    if (t < DAY_DURATION) nightK = t / DAY_DURATION;
+    else nightK = 1 - (t - DAY_DURATION) / NIGHT_DURATION;
+    nightK = Math.min(1, Math.max(0, nightK));
+    const ease = (x) => x * x * (3 - 2 * x);
+    nightK = ease(nightK);
+
     const p = playerRef.current;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#dce9dd";
+
+    const dayCol = { r: 226, g: 232, b: 240 };
+    const nightCol = { r: 15, g: 23, b: 42 };
+    const bgR = Math.round(dayCol.r + (nightCol.r - dayCol.r) * nightK);
+    const bgG = Math.round(dayCol.g + (nightCol.g - dayCol.g) * nightK);
+    const bgB = Math.round(dayCol.b + (nightCol.b - dayCol.b) * nightK);
+    ctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
     ctx.fillRect(0, 0, w, h);
 
+    // camera
     ctx.save();
     const camX = p.x - w / 2;
     const camY = p.y - h / 2;
@@ -703,7 +832,8 @@ export default function Game() {
 
     // grid
     const tile = 110;
-    ctx.strokeStyle = "#c4d3c4";
+    const gridCol = lerpColor({ r: 148, g: 163, b: 184, a: 0.55 }, { r: 48, g: 64, b: 51, a: 1 }, nightK);
+    ctx.strokeStyle = gridCol;
     ctx.lineWidth = 1;
     for (let x = Math.floor(camX / tile) * tile - tile; x < camX + w + tile; x += tile) {
       ctx.beginPath();
@@ -718,7 +848,7 @@ export default function Game() {
       ctx.stroke();
     }
 
-    // items (pickups)
+    // items
     for (const it of itemsRef.current) {
       ctx.save();
       ctx.translate(it.x, it.y);
@@ -777,23 +907,21 @@ export default function Game() {
       ctx.restore();
     }
 
-    // explosions (fx)
-    if (explosionsRef.current.length) {
-      for (const ex of explosionsRef.current) {
-        const alpha = Math.max(0, ex.life / 0.35);
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.6;
-        ctx.fillStyle = "#f97316";
-        ctx.beginPath();
-        ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = alpha * 0.3;
-        ctx.fillStyle = "#fde68a";
-        ctx.beginPath();
-        ctx.arc(ex.x, ex.y, ex.r * 0.55, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
+    // explosions
+    for (const ex of explosionsRef.current) {
+      const alpha = Math.max(0, ex.life / 0.35);
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.fillStyle = "#f97316";
+      ctx.beginPath();
+      ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = alpha * 0.3;
+      ctx.fillStyle = "#fde68a";
+      ctx.beginPath();
+      ctx.arc(ex.x, ex.y, ex.r * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     // zombies
@@ -811,7 +939,7 @@ export default function Game() {
       ctx.fillStyle = "#112";
       ctx.fillRect(-6, -3, 3, 2);
       ctx.fillRect(3, -3, 3, 2);
-      const ratio = clamp(z.hp / 34, 0, 1);
+      const ratio = clamp(z.hp / (z.maxHp || 34), 0, 1);
       ctx.fillStyle = "#111";
       ctx.fillRect(-16, -z.r - 10, 32, 4);
       ctx.fillStyle = "#eb5757";
@@ -894,11 +1022,11 @@ export default function Game() {
 
     ctx.restore(); // camera
 
-    // HUD - HP
+    // HUD HP
     const hudW = 220;
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillStyle = "rgba(15,23,42,0.65)";
     ctx.fillRect(18, 16, hudW, 30);
-    ctx.fillStyle = "#111";
+    ctx.fillStyle = "#fff";
     ctx.font = "14px system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.fillText("HP", 26, 36);
@@ -908,52 +1036,79 @@ export default function Game() {
     ctx.strokeRect(56, 22, hudW - 66, 18);
 
     // weapon HUD
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillStyle = "rgba(15,23,42,0.65)";
     ctx.fillRect(w - 230, 16, 210, 74);
-    ctx.fillStyle = "#111";
-    ctx.fillText(`Оружие: ${p.weapon}`, w - 220, 36);
-    if (p.weapon === "pistol") ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
-    else ctx.fillText("Патроны: —", w - 220, 56);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`Оружие: ${p.weapon ? p.weapon : "—"}`, w - 220, 36);
+    ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
     ctx.fillText(`Мины: ${p.mines}`, w - 220, 72);
 
     // kills bottom-left
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.fillRect(14, h - 46, 170, 32);
-    ctx.fillStyle = "#111";
+    ctx.fillStyle = "rgba(15,23,42,0.65)";
+    ctx.fillRect(14, h - 80, 210, 60);
+    ctx.fillStyle = "#fff";
     ctx.textAlign = "left";
-    ctx.fillText(`Убито: ${killsRef.current}`, 22, h - 24);
+    ctx.fillText(`Убито: ${killsRef.current}`, 22, h - 56);
+    ctx.fillText(`Рекорд: ${bestScore}`, 22, h - 32);
 
-    if (!isRunning) {
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
+    // night overlay
+    if (nightK > 0.05) {
+      ctx.fillStyle = `rgba(15,23,42,${0.35 * nightK})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // overlays
+    if (modeNow === "start") {
+      ctx.fillStyle = "rgba(15,23,42,0.75)";
       ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = "#fff";
-      ctx.font = "bold 30px system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("Вы погибли", w / 2, h / 2 - 10);
+      ctx.font = "bold 38px system-ui, sans-serif";
+      ctx.fillText("Mope-like Survival", w / 2, h / 2 - 60);
       ctx.font = "16px system-ui, sans-serif";
-      ctx.fillText("Нажмите R, чтобы перезапустить", w / 2, h / 2 + 20);
+      ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — сменить", w / 2, h / 2 - 20);
+      ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 20);
+    } else if (modeNow === "pause") {
+      ctx.fillStyle = "rgba(15,23,42,0.6)";
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "bold 34px system-ui, sans-serif";
+      ctx.fillText("Пауза", w / 2, h / 2 - 8);
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.fillText("Нажмите Esc, чтобы продолжить", w / 2, h / 2 + 26);
+    } else if (modeNow === "dead") {
+      ctx.fillStyle = "rgba(15,23,42,0.7)";
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "bold 34px system-ui, sans-serif";
+      ctx.fillText("Вы погибли", w / 2, h / 2 - 40);
+      ctx.font = "18px system-ui, sans-serif";
+      ctx.fillText(`Убито: ${killsRef.current}`, w / 2, h / 2);
+      ctx.fillText(`Рекорд: ${bestScore}`, w / 2, h / 2 + 26);
       ctx.font = "14px system-ui, sans-serif";
-      ctx.fillText(`Убито зомби: ${killsRef.current}`, w / 2, h / 2 + 46);
+      ctx.fillText("Нажмите R, чтобы сыграть снова", w / 2, h / 2 + 54);
     }
   }
 
   return (
-    <div className="w-full h-[720px] relative bg-slate-100 rounded-2xl shadow-inner overflow-hidden">
-      <canvas ref={canvasRef} width={1024} height={640} className="w-full h-full block" />
-      <div className="absolute top-2 right-2 bg-white/70 backdrop-blur rounded-xl p-2 text-xs leading-snug shadow">
-        <div className="font-semibold mb-1">Управление</div>
-        <div>WASD / стрелки — движение</div>
-        <div>Мышь / Space — атака / установка</div>
-        <div>E — подобрать предмет</div>
-        <div>Q — сменить оружие</div>
-        <div>R — рестарт после смерти</div>
-        <div className="mt-2 text-[10px] text-slate-500">Мины: лежащие — голубые, установленные — красные. Взрыв бьёт всех.</div>
-      </div>
+    <div className="w-screen h-screen relative bg-slate-900 overflow-hidden">
+      <canvas ref={canvasRef} width={1280} height={720} className="w-full h-full block" />
       {flash && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-4 py-2 rounded-xl shadow">
           {flash}
         </div>
       )}
+      <div className="absolute top-3 right-3 bg-slate-900/50 text-white text-xs rounded-lg px-3 py-2 pointer-events-none backdrop-blur">
+        <div className="font-semibold mb-1">Управление</div>
+        <div>WASD / стрелки — движение</div>
+        <div>Мышь / Space — атака / поставить мину</div>
+        <div>E — подобрать предмет</div>
+        <div>Q — сменить оружие</div>
+        <div>Esc — пауза</div>
+        <div>R — рестарт (после смерти)</div>
+      </div>
     </div>
   );
 }
