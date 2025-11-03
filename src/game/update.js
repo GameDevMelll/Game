@@ -62,8 +62,11 @@ function getFreeSpawnNear(px, py, walls, tries = 16) {
 }
 
 export function createInitialState(makeWalls, makePlayer) {
-  return {
-    player: makePlayer(),
+  const player = makePlayer();
+  const walls = makeWalls();
+
+  const state = {
+    player,
     zombies: [],
     bullets: [],
     items: [],
@@ -71,7 +74,7 @@ export function createInitialState(makeWalls, makePlayer) {
     enemyBullets: [],
     mines: [],
     explosions: [],
-    walls: makeWalls(),
+    walls,
     keys: {},
     mouse: { x: 0, y: 0, down: false },
     spawn: { timer: 1.5, interval: ZOMBIE_SPAWN_EVERY, min: 0.4 },
@@ -80,7 +83,21 @@ export function createInitialState(makeWalls, makePlayer) {
     dayTime: 0,
     time: 0,
   };
+
+  // 👇 вот это как раз и пропало на GitHub
+  const cx = player.x;
+  const cy = player.y;
+  state.items.push(
+    { x: cx + 120, y: cy + 20, r: 12, type: "bat", id: "start-bat" },
+    { x: cx - 140, y: cy - 20, r: 12, type: "pistol", id: "start-pistol" },
+    { x: cx + 40, y: cy - 130, r: 12, type: "ammo", id: "start-ammo" },
+    { x: cx + 10, y: cy + 180, r: 12, type: "mine", id: "start-mine" },
+    { x: cx - 60, y: cy + 130, r: 12, type: "medkit", id: "start-medkit" }
+  );
+
+  return state;
 }
+
 
 export function attack(state, queueFlash) {
   const p = state.player;
