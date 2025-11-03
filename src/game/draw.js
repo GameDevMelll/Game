@@ -1,4 +1,4 @@
-diff --git a/src/game/draw.js b/src/game/draw.js
+
 index a9f777aabbf523ddd94a3fba04db6254358eaa47..8b526977ae88390882e78c939edf8116544dc79d 100644
 --- a/src/game/draw.js
 +++ b/src/game/draw.js
