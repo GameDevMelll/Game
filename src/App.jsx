@@ -1,4 +1,3 @@
-// src/App.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { makeWalls } from "./game/maze.js";
 import { makePlayer } from "./game/entities.js";
@@ -13,12 +12,12 @@ export default function App() {
   const [flash, setFlash] = useState("");
   const [best, setBest] = useState(0);
 
-  // init state once
+  // создаём состояние один раз
   if (!stateRef.current) {
     stateRef.current = createInitialState(makeWalls, makePlayer);
   }
 
-  // load best from localStorage
+  // загружаем рекорд
   useEffect(() => {
     try {
       const b = Number(localStorage.getItem("ms_best") || 0);
@@ -51,19 +50,19 @@ export default function App() {
     setFlash("");
   };
 
-  // input
+  // инпут
   useEffect(() => {
     const onKey = (e) => {
       const st = stateRef.current;
       st.keys[e.code] = e.type === "keydown";
 
-      // start
+      // старт
       if (mode === "start" && e.type === "keydown" && (e.code === "Space" || e.code === "Enter")) {
         setMode("play");
         setRunning(true);
       }
 
-      // pause
+      // пауза
       if (e.type === "keydown" && e.code === "Escape") {
         if (mode === "play") {
           setMode("pause");
@@ -74,12 +73,12 @@ export default function App() {
         }
       }
 
-      // restart
+      // рестарт
       if (mode === "dead" && e.type === "keydown" && e.code === "KeyR") {
         restart();
       }
 
-      // switch weapon (Q)
+      // смена оружия
       if (mode === "play" && e.type === "keydown" && e.code === "KeyQ") {
         const p = st.player;
         if (p.weapons.length > 1) {
@@ -98,6 +97,7 @@ export default function App() {
       st.mouse.x = e.clientX - rect.left;
       st.mouse.y = e.clientY - rect.top;
     };
+
     const onMouseDown = () => {
       const st = stateRef.current;
       st.mouse.down = true;
@@ -106,6 +106,7 @@ export default function App() {
         setRunning(true);
       }
     };
+
     const onMouseUp = () => {
       const st = stateRef.current;
       st.mouse.down = false;
@@ -126,7 +127,7 @@ export default function App() {
     };
   }, [mode]);
 
-  // loop
+  // цикл
   useEffect(() => {
     let frame;
     let last = 0;
@@ -139,6 +140,7 @@ export default function App() {
       const ctx = canvas.getContext("2d");
       const dt = Math.min(0.033, (t - last) / 1000);
       last = t;
+
       if (mode === "play" && running) {
         update(stateRef.current, dt, {
           canvas,
