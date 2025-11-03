@@ -6,11 +6,17 @@ import {
   BULLET_SPEED,
 } from "./constants.js";
 
+const ZOMBIE_BASE_HP = 34;
+
 export const makePlayer = () => ({
   x: WORLD.w / 2,
   y: WORLD.h / 2,
   r: 17,
   hp: PLAYER_MAX_HP,
+  maxHp: PLAYER_MAX_HP,
+  level: 1,
+  xp: 0,
+  nextLevelXp: XP_LEVEL_BASE,
   facing: 0,
   weapon: null,
   weapons: [],
@@ -18,6 +24,7 @@ export const makePlayer = () => ({
   attackCD: 0,
   swing: 0,
   mines: 0,
+  medkits: 0,
   // для рывка
   dashTime: 0,
   dashCD: 0,
@@ -101,28 +108,26 @@ export const makeBullet = (x, y, ang, options = {}) => ({
   life: options.life ?? 1.2,
 });
 
-export const makeItem = (x, y, type) => ({
+export const makeVillager = (x, y) => ({
   x,
   y,
-  r: 12,
-  type,
-  id: Math.random().toString(36).slice(2),
-});
-
-export const makeWhite = (x, y) => ({
-  x,
-  y,
-  r: 16,
-  hp: 28,
-  age: 0,
-  shootCD: 1.6,
+  r: 14,
+  hp: PLAYER_MAX_HP * 0.75,
+  maxHp: PLAYER_MAX_HP * 0.75,
+  wanderTimer: randWander(),
+  wanderAng: Math.random() * Math.PI * 2,
 });
 
 export const makeBoss = (x, y) => ({
   x,
   y,
-  r: 46,
+  r: 60,
   hp: BOSS_HP,
   maxHp: BOSS_HP,
-  shootCD: 1.5,
+  speed: BOSS_SPEED,
+  kind: "boss",
+  xp: XP_PER_KILL + 120,
+  behavior: "boss",
+  state: "idle",
+  stateTimer: 0,
 });

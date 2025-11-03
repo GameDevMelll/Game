@@ -6,10 +6,129 @@ import {
 } from "./constants.js";
 import { clamp, lerpColor } from "./utils.js";
 
+const drawGroundItem = (ctx, item) => {
+  switch (item.type) {
+    case "bat":
+      ctx.fillStyle = "#8b5a2b";
+      ctx.fillRect(-16, -4, 34, 8);
+      break;
+    case "pistol":
+      ctx.fillStyle = "#333";
+      ctx.fillRect(-10, -4, 20, 8);
+      ctx.fillStyle = "#999";
+      ctx.fillRect(0, -4, 6, 14);
+      break;
+    case "ammo":
+      ctx.fillStyle = "#888";
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "medkit":
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(-11, -9, 22, 18);
+      ctx.fillStyle = "#d33";
+      ctx.fillRect(-3, -7, 6, 14);
+      ctx.fillRect(-7, -3, 14, 6);
+      break;
+    case "mine":
+      ctx.fillStyle = "#444";
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "shotgun":
+      ctx.fillStyle = "#2f2f2f";
+      ctx.fillRect(-20, -5, 40, 10);
+      ctx.fillStyle = "#b91c1c";
+      ctx.fillRect(-12, -7, 12, 14);
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(6, -3, 14, 6);
+      break;
+    case "glaive":
+      ctx.save();
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(-4, -26, 8, 52);
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.moveTo(-10, -32);
+      ctx.lineTo(18, -6);
+      ctx.lineTo(-10, 20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      break;
+    default:
+      ctx.fillStyle = "#9ca3af";
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
+  }
+};
+
+const drawWeaponIcon = (ctx, weapon) => {
+  switch (weapon) {
+    case "bat":
+      ctx.fillStyle = "#8b5a2b";
+      ctx.fillRect(-14, -4, 28, 8);
+      break;
+    case "pistol":
+      ctx.fillStyle = "#333";
+      ctx.fillRect(-10, -4, 20, 8);
+      ctx.fillStyle = "#999";
+      ctx.fillRect(0, -4, 5, 12);
+      break;
+    case "shotgun":
+      ctx.fillStyle = "#2f2f2f";
+      ctx.fillRect(-16, -5, 32, 10);
+      ctx.fillStyle = "#b91c1c";
+      ctx.fillRect(-8, -7, 10, 14);
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(8, -3, 10, 6);
+      break;
+    case "glaive":
+      ctx.save();
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(-3, -20, 6, 40);
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.moveTo(-8, -26);
+      ctx.lineTo(14, -8);
+      ctx.lineTo(-8, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      break;
+    case "mine":
+      ctx.fillStyle = "#444";
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#dc2626";
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    default:
+      ctx.fillStyle = "#94a3b8";
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+  }
+};
+
 export function draw(ctx, state, mode, bestScore) {
   const p = state.player;
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
+  const villagers = state.villagers ?? [];
+  const villagerCount = villagers.length;
 
   // day-night
   const t = state.dayTime % DAY_NIGHT_CYCLE;
@@ -215,9 +334,20 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.arc(0, 0, z.r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#112";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = z.kind === "skeleton" ? "#111" : "#112";
     ctx.fillRect(-6, -3, 3, 2);
     ctx.fillRect(3, -3, 3, 2);
+    if (z.kind === "boss") {
+      ctx.save();
+      ctx.rotate(0.3);
+      ctx.fillStyle = "#78350f";
+      ctx.fillRect(z.r * 0.4, -6, 36, 12);
+      ctx.restore();
+    } else if (z.kind === "bomber") {
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(-4, z.r - 6, 8, 8);
+    }
     const ratio = clamp(z.hp / (z.maxHp || 34), 0, 1);
     ctx.fillStyle = "#111";
     ctx.fillRect(-16, -z.r - 10, 32, 4);
@@ -228,23 +358,33 @@ export function draw(ctx, state, mode, bestScore) {
 
   // shooters
   for (const wht of state.whites) {
+    const isWitch = wht.type === "witch";
+    const maxHp = wht.maxHp || (isWitch ? 68 : 28);
     ctx.save();
     ctx.translate(wht.x, wht.y);
     ctx.fillStyle = "rgba(0,0,0,0.08)";
     ctx.beginPath();
-    ctx.ellipse(0, 8, 22, 11, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 8, (isWitch ? 26 : 22), (isWitch ? 13 : 11), 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#e2e8f0";
+    ctx.fillStyle = isWitch ? "#7c3aed" : "#e2e8f0";
     ctx.beginPath();
     ctx.arc(0, 0, wht.r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#0f172a";
+    ctx.fillStyle = isWitch ? "#fcd34d" : "#0f172a";
     ctx.fillRect(-6, -3, 3, 2);
     ctx.fillRect(3, -3, 3, 2);
-    const ratioW = clamp(wht.hp / 28, 0, 1);
+    if (isWitch) {
+      ctx.fillStyle = "rgba(236,72,153,0.6)";
+      ctx.beginPath();
+      ctx.arc(0, 0, wht.r + 10, Math.PI * 0.1, Math.PI * 0.6);
+      ctx.strokeStyle = "rgba(216,180,254,0.5)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    const ratioW = clamp(wht.hp / maxHp, 0, 1);
     ctx.fillStyle = "#111";
     ctx.fillRect(-16, -wht.r - 10, 32, 4);
-    ctx.fillStyle = "#eb5757";
+    ctx.fillStyle = isWitch ? "#a855f7" : "#eb5757";
     ctx.fillRect(-16, -wht.r - 10, 32 * ratioW, 4);
     ctx.restore();
   }
@@ -324,31 +464,46 @@ export function draw(ctx, state, mode, bestScore) {
 
   // HUD: HP
   const hudW = 220;
-  ctx.fillStyle = "rgba(15,23,42,0.65)";
-  ctx.fillRect(18, 16, hudW, 30);
+  ctx.fillStyle = "rgba(15,23,42,0.7)";
+  ctx.fillRect(18, 16, hudW, 74);
   ctx.fillStyle = "#fff";
   ctx.font = "14px system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.fillText("HP", 26, 36);
+  const hpRatio = clamp(p.hp / (p.maxHp || PLAYER_MAX_HP), 0, 1);
   ctx.fillStyle = "#ef4444";
-  ctx.fillRect(56, 22, (p.hp / PLAYER_MAX_HP) * (hudW - 66), 18);
+  ctx.fillRect(56, 22, hpRatio * (hudW - 66), 18);
   ctx.strokeStyle = "rgba(0,0,0,0.2)";
   ctx.strokeRect(56, 22, hudW - 66, 18);
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillText(`Lv ${p.level}`, 26, 54);
+  const xpRatio = clamp(p.xp / (p.nextLevelXp || 1), 0, 1);
+  ctx.fillStyle = "rgba(96,165,250,0.35)";
+  ctx.fillRect(56, 46, hudW - 66, 10);
+  ctx.fillStyle = "#3b82f6";
+  ctx.fillRect(56, 46, xpRatio * (hudW - 66), 10);
+  ctx.fillStyle = "#cbd5f5";
+  ctx.fillText(`XP ${Math.round(p.xp)} / ${p.nextLevelXp}`, 56, 62);
+  ctx.fillStyle = "#fef08a";
+  ctx.fillText(`Аптечки: ${p.medkits || 0}`, 26, 72);
 
   // HUD: оружие
   ctx.fillStyle = "rgba(15,23,42,0.65)";
-  ctx.fillRect(w - 230, 16, 210, 74);
+  ctx.fillRect(w - 230, 16, 210, 96);
   ctx.fillStyle = "#fff";
   ctx.fillText(`Оружие: ${p.weapon ? p.weapon : "—"}`, w - 220, 36);
   ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
   ctx.fillText(`Мины: ${p.mines}`, w - 220, 72);
+  ctx.fillText(`Жители: ${villagerCount}`, w - 220, 88);
 
   // kills (без рекорда)
   ctx.fillStyle = "rgba(15,23,42,0.65)";
-  ctx.fillRect(14, h - 64, 180, 44);
+  ctx.fillRect(14, h - 76, 196, 60);
   ctx.fillStyle = "#fff";
   ctx.textAlign = "left";
-  ctx.fillText(`Убито: ${state.kills}`, 22, h - 40);
+  ctx.fillText(`Убито: ${state.kills}`, 22, h - 52);
+  ctx.fillText(`Жители: ${villagerCount}`, 22, h - 28);
 
   // инвентарь (5 слотов)
   const invSlots = 5;
@@ -433,8 +588,9 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.font = "bold 38px system-ui, sans-serif";
     ctx.fillText("Mope-like Survival", w / 2, h / 2 - 60);
     ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — сменить", w / 2, h / 2 - 20);
-    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 20);
+    ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — аптечка", w / 2, h / 2 - 20);
+    ctx.fillText("Берегите жителей — монстры охотятся и за ними", w / 2, h / 2 + 4);
+    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 28);
   } else if (mode === "pause") {
     ctx.fillStyle = "rgba(15,23,42,0.6)";
     ctx.fillRect(0, 0, w, h);

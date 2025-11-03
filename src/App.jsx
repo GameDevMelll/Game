@@ -1,12 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { makeWalls } from "./game/maze.js";
 import { makePlayer } from "./game/entities.js";
-import { createInitialState, update } from "./game/update.js";
+import { createInitialState, update, useMedkit } from "./game/update.js";
 import { draw } from "./game/draw.js";
 
 export default function App() {
   const canvasRef = useRef(null);
   const stateRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const ambientGainRef = useRef(null);
+  const melodyRef = useRef(null);
+  const melodyStateRef = useRef({ timer: 0, step: 0 });
 
   const [mode, setMode] = useState("start"); // start | play | pause | dead
   const [running, setRunning] = useState(false);
@@ -51,6 +55,53 @@ export default function App() {
     setFlash("");
   };
 
+  const ensureAudio = () => {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!audioCtxRef.current) {
+      const ctx = new AudioCtx();
+      const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.08;
+      }
+      const noiseSource = ctx.createBufferSource();
+      noiseSource.buffer = noiseBuffer;
+      noiseSource.loop = true;
+      const ambientGain = ctx.createGain();
+      ambientGain.gain.value = 0.05;
+      noiseSource.connect(ambientGain).connect(ctx.destination);
+      noiseSource.start();
+
+      const melodyOsc = ctx.createOscillator();
+      melodyOsc.type = "triangle";
+      melodyOsc.frequency.value = 320;
+      const melodyGain = ctx.createGain();
+      melodyGain.gain.value = 0.0;
+      melodyOsc.connect(melodyGain).connect(ctx.destination);
+      melodyOsc.start();
+
+      audioCtxRef.current = ctx;
+      ambientGainRef.current = ambientGain;
+      melodyRef.current = { osc: melodyOsc, gain: melodyGain };
+      melodyStateRef.current = { timer: 0, step: 0 };
+    } else if (audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mode === "play" && running) ensureAudio();
+  }, [mode, running]);
+
   // инпут
   useEffect(() => {
     const onKey = (e) => {
@@ -62,6 +113,7 @@ export default function App() {
       if (mode === "start" && e.type === "keydown" && (e.code === "Space" || e.code === "Enter")) {
         setMode("play");
         setRunning(true);
+        ensureAudio();
         return;
       }
 
@@ -83,13 +135,11 @@ export default function App() {
         return;
       }
 
-      // переключение по Q
+      // аптечка по Q
       if (e.type === "keydown" && e.code === "KeyQ" && mode === "play") {
-        if (p.weapons.length > 1) {
-          const idx = p.weapons.indexOf(p.weapon);
-          p.weapon = p.weapons[(idx + 1) % p.weapons.length];
-          queueFlash(`Выбрано оружие: ${p.weapon}`);
-        }
+        if (e.repeat) return;
+        useMedkit(stateRef.current, queueFlash);
+        return;
       }
 
       // выбор по цифрам 1..5
@@ -116,6 +166,7 @@ export default function App() {
       if (mode === "start") {
         setMode("play");
         setRunning(true);
+        ensureAudio();
       }
     };
     const onMouseUp = () => {
@@ -159,6 +210,30 @@ export default function App() {
         });
       }
       draw(ctx, stateRef.current, mode, best);
+
+      if (audioCtxRef.current && ambientGainRef.current) {
+        const ctxTime = audioCtxRef.current.currentTime;
+        const hostiles =
+          (stateRef.current?.zombies?.length || 0) +
+          ((stateRef.current?.whites?.length || 0) * 1.5);
+        const intensity = Math.min(1, hostiles / 60);
+        const active = mode === "play" && running;
+        const targetAmb = active ? 0.06 + intensity * 0.2 : 0.02;
+        ambientGainRef.current.gain.setTargetAtTime(targetAmb, ctxTime, 0.5);
+        if (melodyRef.current) {
+          const melState = melodyStateRef.current;
+          melState.timer += dt;
+          if (melState.timer >= 2.4) {
+            melState.timer = 0;
+            melState.step = (melState.step + 1) % 6;
+            const notes = [220, 262, 294, 330, 392, 262];
+            melodyRef.current.osc.frequency.setTargetAtTime(notes[melState.step], ctxTime, 0.35);
+          }
+          const targetMel = active ? 0.02 + intensity * 0.12 : 0.0;
+          melodyRef.current.gain.setTargetAtTime(targetMel, ctxTime, 0.4);
+        }
+      }
+
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
@@ -178,7 +253,7 @@ export default function App() {
         <div>WASD / стрелки — движение</div>
         <div>Мышь / Space — атака / поставить мину</div>
         <div>E — подобрать предмет</div>
-        <div>Q — сменить оружие</div>
+        <div>Q — использовать аптечку</div>
         <div>1..5 — выбрать слот</div>
         <div>Esc — пауза</div>
         <div>R — рестарт (после смерти)</div>

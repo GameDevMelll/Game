@@ -2,6 +2,8 @@ import {
   WORLD,
   PLAYER_SPEED,
   PLAYER_MAX_HP,
+  PLAYER_LEVEL_HP_BONUS,
+  PLAYER_MEDKIT_HEAL,
   BULLET_SPEED,
   PICKUP_RADIUS,
   ZOMBIE_SPAWN_EVERY,
@@ -18,9 +20,26 @@ import {
   MINE_EXPLOSION_RADIUS,
   WALL_THICKNESS,
   DAY_NIGHT_CYCLE,
+  XP_PER_KILL,
+  WITCH_SUMMON_INTERVAL,
+  WITCH_MAX_AGE,
+  INITIAL_VILLAGERS,
+  VILLAGER_SPAWN_EVERY,
+  VILLAGER_SPEED,
+  BOMBER_COUNTDOWN,
+  BOSS_SPAWN_AT,
+  BOSS_ATTACK_RANGE,
+  BOSS_ATTACK_DAMAGE,
 } from "./constants.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
-import { makeZombie, makeItem, makeWhite, makeBullet } from "./entities.js";
+import {
+  makeZombie,
+  makeItem,
+  makeWhite,
+  makeBullet,
+  makeVillager,
+  makeBoss,
+} from "./entities.js";
 
 function circleRectCollides(cx, cy, cr, r) {
   const closeX = clamp(cx, r.x, r.x + r.w);
@@ -81,10 +100,16 @@ export function createInitialState(makeWalls, makePlayer) {
     keys: {},
     mouse: { x: 0, y: 0, down: false },
     spawn: { timer: 1.5, interval: ZOMBIE_SPAWN_EVERY, min: 0.4 },
-    whiteSpawn: { timer: WHITE_START_AT, interval: WHITE_SPAWN_EVERY, min: WHITE_SPAWN_MIN },
+    whiteSpawn: {
+      timer: WHITE_START_AT,
+      interval: WHITE_SPAWN_EVERY,
+      min: WHITE_SPAWN_MIN,
+    },
+    villagerSpawn: { timer: 8, interval: VILLAGER_SPAWN_EVERY },
     kills: 0,
     dayTime: 0,
     time: 0,
+    bossSpawned: false,
   };
 
   // стартовые предметы вокруг игрока
@@ -110,12 +135,18 @@ export function attack(state, queueFlash) {
 
   if (p.weapon === "bat") {
     for (const z of state.zombies) {
-      if (dist2(p.x, p.y, z.x, z.y) < (p.r + 55) ** 2) {
+      if (
+        dist2(p.x, p.y, z.x, z.y) < (p.r + 55) ** 2 &&
+        hasLineOfSight(p.x, p.y, z.x, z.y, state.walls)
+      ) {
         z.hp -= 25 * 1.8;
       }
     }
     for (const w of state.whites) {
-      if (dist2(p.x, p.y, w.x, w.y) < (p.r + 55) ** 2) {
+      if (
+        dist2(p.x, p.y, w.x, w.y) < (p.r + 55) ** 2 &&
+        hasLineOfSight(p.x, p.y, w.x, w.y, state.walls)
+      ) {
         w.hp -= 25 * 1.5;
       }
     }
@@ -225,7 +256,9 @@ export function tryPickup(state, queueFlash) {
         if (!p.weapon) p.weapon = it.type;
       }
       if (it.type === "ammo") p.ammo += 12;
-      if (it.type === "medkit") p.hp = clamp(p.hp + 35, 0, PLAYER_MAX_HP);
+      if (it.type === "medkit") {
+        p.medkits = (p.medkits || 0) + 1;
+      }
       if (it.type === "mine") {
         p.mines = (p.mines || 0) + 1;
         p.weapon = "mine";
@@ -239,17 +272,58 @@ export function tryPickup(state, queueFlash) {
       }
       if (["bat", "pistol"].includes(it.type)) p.weapon = it.type;
       state.items = state.items.filter((i) => i.id !== it.id);
-      queueFlash && queueFlash(`Подобрано: ${it.type}`);
+      if (queueFlash) {
+        if (it.type === "medkit") queueFlash(`Аптечка сохранена (${p.medkits})`);
+        else queueFlash(`Подобрано: ${it.type}`);
+      }
       break;
     }
   }
 }
 
+export function useMedkit(state, queueFlash) {
+  const p = state.player;
+  if (!p.medkits || p.medkits <= 0) {
+    queueFlash && queueFlash("Аптечек нет");
+    return false;
+  }
+  if (p.hp >= p.maxHp - 0.1) {
+    queueFlash && queueFlash("Полное здоровье");
+    return false;
+  }
+  p.medkits -= 1;
+  p.hp = clamp(p.hp + PLAYER_MEDKIT_HEAL, 0, p.maxHp);
+  queueFlash && queueFlash(`Аптечек осталось: ${p.medkits}`);
+  return true;
+}
+
 export function update(state, dt, { canvas, onDeath, queueFlash }) {
   const p = state.player;
+  if (!p.maxHp) p.maxHp = PLAYER_MAX_HP;
+  p.maxHp = Math.max(p.maxHp, PLAYER_MAX_HP);
+  p.hp = clamp(p.hp, 0, p.maxHp);
   state.time += dt;
   state.dayTime += dt;
   if (state.dayTime >= DAY_NIGHT_CYCLE) state.dayTime -= DAY_NIGHT_CYCLE;
+
+  const rareFactor = clamp(state.time / 240, 0, 1);
+
+  const grantXp = (amount) => {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    p.xp += amount;
+    let leveled = false;
+    while (p.xp >= p.nextLevelXp) {
+      p.xp -= p.nextLevelXp;
+      p.level += 1;
+      p.maxHp += PLAYER_LEVEL_HP_BONUS;
+      p.hp = Math.min(p.maxHp, p.hp + PLAYER_LEVEL_HP_BONUS * 1.5);
+      p.nextLevelXp = Math.round(p.nextLevelXp * 1.35 + 25);
+      leveled = true;
+    }
+    if (leveled && queueFlash) {
+      queueFlash(`Новый уровень: ${p.level}`);
+    }
+  };
 
   // движение игрока
   let dx = 0,
@@ -317,26 +391,107 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   state.bullets = state.bullets.filter((b) => b.life > 0);
 
   // спавн зомби
+  state.spawn.min = Math.max(0.2, 0.65 - state.time / 210);
   state.spawn.timer -= dt;
   if (state.spawn.timer <= 0 && state.zombies.length < ZOMBIE_MAX_ON_FIELD) {
-    state.spawn.interval = Math.max(state.spawn.min, state.spawn.interval * 0.965);
-    state.spawn.timer = state.spawn.interval * rand(0.5, 1.1);
+    state.spawn.interval = Math.max(
+      state.spawn.min,
+      state.spawn.interval * (0.955 - rareFactor * 0.06)
+    );
+    state.spawn.timer = state.spawn.interval * rand(0.45, 1.05);
     const spot = getFreeSpawnNear(p.x, p.y, state.walls);
-    state.zombies.push(makeZombie(spot.x, spot.y));
+    const kind = pickZombieKindForSpawn(rareFactor);
+    state.zombies.push(makeZombie(spot.x, spot.y, kind));
+  }
+
+  if (!state.bossSpawned && state.time >= BOSS_SPAWN_AT) {
+    const bossSpot = getFreeSpawnNear(p.x, p.y, state.walls, 24);
+    state.zombies.push(makeBoss(bossSpot.x, bossSpot.y));
+    state.bossSpawned = true;
+    queueFlash && queueFlash("Орк-босс ворвался в бой!");
   }
 
   // спавн стрелков
   if (state.time >= WHITE_START_AT) {
+    state.whiteSpawn.min = Math.max(0.45, WHITE_SPAWN_MIN - state.time / 260);
     state.whiteSpawn.timer -= dt;
     if (state.whiteSpawn.timer <= 0) {
-      state.whiteSpawn.interval = Math.max(state.whiteSpawn.min, state.whiteSpawn.interval * 0.97);
+      state.whiteSpawn.interval = Math.max(
+        state.whiteSpawn.min,
+        state.whiteSpawn.interval * (0.965 - rareFactor * 0.05)
+      );
       state.whiteSpawn.timer = state.whiteSpawn.interval * rand(0.6, 1.1);
       const spot = getFreeSpawnNear(p.x, p.y, state.walls);
-      state.whites.push(makeWhite(spot.x, spot.y));
+      const witchChance = Math.min(0.08, 0.02 + state.time / 2400);
+      const type = Math.random() < witchChance ? "witch" : "white";
+      state.whites.push(makeWhite(spot.x, spot.y, type));
     }
   }
 
-  // движение зомби
+  // пополнение жителей
+  state.villagerSpawn.timer -= dt;
+  if (state.villagerSpawn.timer <= 0 && state.villagers.length < INITIAL_VILLAGERS + 4) {
+    const spot = getFreeSpawnNear(p.x, p.y, state.walls, 20);
+    state.villagers.push(makeVillager(spot.x, spot.y));
+    state.villagerSpawn.timer = state.villagerSpawn.interval + rand(6, 14);
+  }
+
+  // движение жителей
+  for (const v of state.villagers) {
+    v.wanderTimer = (v.wanderTimer ?? 0) - dt;
+    let threat = null;
+    let best = Infinity;
+    for (const z of state.zombies) {
+      const d = dist2(v.x, v.y, z.x, z.y);
+      if (d < best) {
+        best = d;
+        threat = z;
+      }
+    }
+    for (const w of state.whites) {
+      const d = dist2(v.x, v.y, w.x, w.y);
+      if (d < best) {
+        best = d;
+        threat = w;
+      }
+    }
+    let moveAng = v.wanderAng ?? Math.random() * Math.PI * 2;
+    let speed = VILLAGER_SPEED * 0.65;
+    if (threat && best < 320 * 320) {
+      moveAng = Math.atan2(v.y - threat.y, v.x - threat.x);
+      speed = VILLAGER_SPEED;
+    } else if (v.wanderTimer <= 0) {
+      v.wanderTimer = 1.5 + Math.random() * 3;
+      v.wanderAng = Math.random() * Math.PI * 2;
+      moveAng = v.wanderAng;
+    } else if (!threat) {
+      moveAng = v.wanderAng ?? moveAng;
+    }
+
+    const attemptMove = (nx, ny) => {
+      for (const wall of state.walls) {
+        if (circleRectCollides(nx, ny, v.r, wall)) return false;
+      }
+      v.x = nx;
+      v.y = ny;
+      return true;
+    };
+
+    const nx = clamp(v.x + Math.cos(moveAng) * speed * dt, v.r, WORLD.w - v.r);
+    const ny = clamp(v.y + Math.sin(moveAng) * speed * dt, v.r, WORLD.h - v.r);
+    if (!attemptMove(nx, ny)) {
+      const nxOnly = clamp(v.x + Math.cos(moveAng) * speed * dt, v.r, WORLD.w - v.r);
+      if (!attemptMove(nxOnly, v.y)) {
+        const nyOnly = clamp(v.y + Math.sin(moveAng) * speed * dt, v.r, WORLD.h - v.r);
+        attemptMove(v.x, nyOnly);
+      }
+    }
+
+    v.hp = clamp(v.hp, 0, v.maxHp);
+  }
+
+  // движение зомби и приоритет целей
+  const villagersToConvert = new Set();
   for (const z of state.zombies) {
     z.age += dt;
     const angToPlayer = angleBetween(z.x, z.y, p.x, p.y);
@@ -448,8 +603,8 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
       const zx2 = clamp(z.x + Math.cos(moveAng) * speed * dt, 10, WORLD.w - 10);
       let xok = true;
       for (const w of state.walls) {
-        if (circleRectCollides(zx2, z.y, z.r, w)) {
-          xok = false;
+        if (circleRectCollides(zx, zy, z.r, w)) {
+          blocked = true;
           break;
         }
       }
@@ -460,17 +615,30 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         const zy2 = clamp(z.y + Math.sin(moveAng) * speed * dt, 10, WORLD.h - 10);
         let yok = true;
         for (const w of state.walls) {
-          if (circleRectCollides(z.x, zy2, z.r, w)) {
-            yok = false;
+          if (circleRectCollides(zx2, z.y, z.r, w)) {
+            xok = false;
             break;
           }
         }
-        if (yok) {
-          zx = z.x;
-          zy = zy2;
+        if (xok) {
+          zx = zx2;
+          zy = z.y;
         } else {
-          zx = prevX;
-          zy = prevY;
+          const zy2 = clamp(z.y + Math.sin(moveAng) * speed * dt, 10, WORLD.h - 10);
+          let yok = true;
+          for (const w of state.walls) {
+            if (circleRectCollides(z.x, zy2, z.r, w)) {
+              yok = false;
+              break;
+            }
+          }
+          if (yok) {
+            zx = z.x;
+            zy = zy2;
+          } else {
+            zx = prevX;
+            zy = prevY;
+          }
         }
       }
     }
@@ -486,7 +654,13 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         p.hp = 0;
         onDeath && onDeath();
       }
+    };
+
+    applyContact(p, "player");
+    for (const villager of state.villagers) {
+      applyContact(villager, "villager");
     }
+
     for (const b of state.bullets) {
       const br = b.radius ?? 3;
       if (dist2(b.x, b.y, z.x, z.y) < (z.r + br) ** 2) {
@@ -502,9 +676,11 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     const angToP = angleBetween(w.x, w.y, p.x, p.y);
     const d2p = dist2(w.x, w.y, p.x, p.y);
 
+    const baseSpeed = w.type === "witch" ? WHITE_BASE_SPEED * 0.75 : WHITE_BASE_SPEED;
+
     const tryStep = (ang) => {
-      const sx = clamp(w.x + Math.cos(ang) * WHITE_BASE_SPEED * dt, 10, WORLD.w - 10);
-      const sy = clamp(w.y + Math.sin(ang) * WHITE_BASE_SPEED * dt, 10, WORLD.h - 10);
+      const sx = clamp(w.x + Math.cos(ang) * baseSpeed * dt, 10, WORLD.w - 10);
+      const sy = clamp(w.y + Math.sin(ang) * baseSpeed * dt, 10, WORLD.h - 10);
       for (const wall of state.walls) {
         if (circleRectCollides(sx, sy, w.r, wall)) return null;
       }
@@ -537,7 +713,30 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     if (w.shootCD <= 0) {
       const ang = Math.atan2(p.y - w.y, p.x - w.x);
       state.enemyBullets.push({ x: w.x, y: w.y, ang, life: 3.5 });
-      w.shootCD = 1.6;
+      w.shootCD = w.type === "witch" ? 1.2 : 1.6;
+    }
+
+    if (w.type === "witch") {
+      w.summonCD -= dt;
+      if (w.summonCD <= 0) {
+        for (let i = 0; i < 3; i++) {
+          const ang = (Math.PI * 2 * i) / 3 + rand(-0.4, 0.4);
+          const dist = 34 + Math.random() * 32;
+          const sx = clamp(w.x + Math.cos(ang) * dist, 12, WORLD.w - 12);
+          const sy = clamp(w.y + Math.sin(ang) * dist, 12, WORLD.h - 12);
+          let blocked = false;
+          for (const wall of state.walls) {
+            if (circleRectCollides(sx, sy, 12, wall)) {
+              blocked = true;
+              break;
+            }
+          }
+          if (!blocked) {
+            state.zombies.push(makeZombie(sx, sy, "skeleton"));
+          }
+        }
+        w.summonCD = WITCH_SUMMON_INTERVAL;
+      }
     }
   }
 
@@ -548,6 +747,29 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
       if (m.state === "arming") {
         m.timer -= dt;
         if (m.timer <= 0) m.state = "armed";
+        keep.push(m);
+        continue;
+      }
+      if (m.state === "countdown") {
+        m.timer -= dt;
+        if (m.timer <= 0) {
+          state.explosions.push({ x: m.x, y: m.y, r: 0, life: 0.35 });
+          state.zombies.forEach((z) => {
+            if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
+          });
+          state.whites.forEach((w) => {
+            if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
+          });
+          state.villagers.forEach((villager) => {
+            if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
+              villagersToConvert.add(villager);
+          });
+          if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
+            p.hp = 0;
+            onDeath && onDeath();
+          }
+          continue;
+        }
         keep.push(m);
         continue;
       }
@@ -582,6 +804,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         });
         state.whites.forEach((w) => {
           if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
+        });
+        state.villagers.forEach((villager) => {
+          if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
+            villagersToConvert.add(villager);
         });
         if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
           p.hp = 0;
@@ -633,15 +859,42 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         onDeath && onDeath();
       }
     }
+    if (eb.life > 0) {
+      for (const villager of state.villagers) {
+        if (dist2(eb.x, eb.y, villager.x, villager.y) < (villager.r + 3) ** 2) {
+          villager.hp -= 32;
+          eb.life = 0;
+          if (villager.hp <= 0) villagersToConvert.add(villager);
+          break;
+        }
+      }
+    }
   }
   state.enemyBullets = state.enemyBullets.filter((b) => b.life > 0);
 
+  if (villagersToConvert.size) {
+    const keepVillagers = [];
+    for (const villager of state.villagers) {
+      if (villagersToConvert.has(villager)) {
+        const roll = Math.random();
+        let kind = "normal";
+        if (roll < 0.33) kind = "ghost";
+        else if (roll < 0.66) kind = "skeleton";
+        state.zombies.push(makeZombie(villager.x, villager.y, kind));
+      } else {
+        keepVillagers.push(villager);
+      }
+    }
+    state.villagers = keepVillagers;
+  }
+
   // очистка
   const newZ = [];
-  let died = 0;
+  let zombieKills = 0;
   for (const z of state.zombies) {
     if (z.hp <= 0) {
-      died++;
+      zombieKills++;
+      grantXp(z.xp ?? XP_PER_KILL);
       const drop = Math.random();
       const dropX = p.x + rand(-120, 120);
       const dropY = p.y + rand(-120, 120);
@@ -652,13 +905,29 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
       else if (drop < 0.332) state.items.push(makeItem(dropX, dropY, "glaive"));
       continue;
     }
-    if (z.age >= ZOMBIE_MAX_AGE) continue;
+    if (z.kind !== "boss" && z.age >= ZOMBIE_MAX_AGE) continue;
     newZ.push(z);
   }
   state.zombies = newZ;
-  if (died > 0) state.kills += died;
+  if (zombieKills > 0) state.kills += zombieKills;
 
-  state.whites = state.whites.filter((w) => w.hp > 0 && w.age < WHITE_MAX_AGE);
+  const keepWhites = [];
+  let rangedKills = 0;
+  for (const w of state.whites) {
+    const maxAge = w.type === "witch" ? WITCH_MAX_AGE : WHITE_MAX_AGE;
+    if (w.hp <= 0) {
+      rangedKills++;
+      grantXp(w.xp ?? XP_PER_KILL + 6);
+      const drop = Math.random();
+      if (drop < 0.18) state.items.push(makeItem(w.x + rand(-50, 50), w.y + rand(-50, 50), "ammo"));
+      else if (drop < 0.22) state.items.push(makeItem(w.x + rand(-40, 40), w.y + rand(-40, 40), "medkit"));
+      continue;
+    }
+    if (w.age >= maxAge) continue;
+    keepWhites.push(w);
+  }
+  state.whites = keepWhites;
+  if (rangedKills > 0) state.kills += rangedKills;
 
   if (state.zombies.length > ZOMBIE_HARD_CAP) state.zombies.length = ZOMBIE_HARD_CAP;
   if (state.whites.length > WHITE_HARD_CAP) state.whites.length = WHITE_HARD_CAP;
