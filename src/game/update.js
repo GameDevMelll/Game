@@ -30,6 +30,7 @@ import {
   BOSS_SPAWN_AT,
   BOSS_ATTACK_RANGE,
   BOSS_ATTACK_DAMAGE,
+  ZOMBIE_BASE_SPEED,
 } from "./constants.js";
 import { SOUND_KEYS } from "./assets.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
