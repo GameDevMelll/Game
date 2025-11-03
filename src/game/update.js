@@ -51,57 +51,6 @@ function circleRectCollides(cx, cy, cr, r) {
 
 const angleDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
-const linesIntersect = (x1, y1, x2, y2, x3, y3, x4, y4) => {
-  const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-  if (den === 0) return false;
-  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
-  const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den;
-  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
-};
-
-const segmentIntersectsRect = (x1, y1, x2, y2, rect) => {
-  const rx1 = rect.x;
-  const ry1 = rect.y;
-  const rx2 = rect.x + rect.w;
-  const ry2 = rect.y + rect.h;
-  if (x1 >= rx1 && x1 <= rx2 && y1 >= ry1 && y1 <= ry2) return true;
-  if (x2 >= rx1 && x2 <= rx2 && y2 >= ry1 && y2 <= ry2) return true;
-  return (
-    linesIntersect(x1, y1, x2, y2, rx1, ry1, rx2, ry1) ||
-    linesIntersect(x1, y1, x2, y2, rx2, ry1, rx2, ry2) ||
-    linesIntersect(x1, y1, x2, y2, rx2, ry2, rx1, ry2) ||
-    linesIntersect(x1, y1, x2, y2, rx1, ry2, rx1, ry1)
-  );
-};
-
-const hasLineOfSight = (x1, y1, x2, y2, walls) => {
-  for (const w of walls) {
-    if (segmentIntersectsRect(x1, y1, x2, y2, w)) return false;
-  }
-  return true;
-};
-
-const ZOMBIE_SPAWN_WEIGHTS = [
-  { kind: "bomber", base: 0.04, rare: 0.08 },
-  { kind: "ghost", base: 0.08, rare: 0.1 },
-  { kind: "skeleton", base: 0.12, rare: 0.1 },
-  { kind: "brute", base: 0.08, rare: 0.05 },
-  { kind: "small", base: 0.1, rare: 0.05 },
-  { kind: "fat", base: 0.12, rare: 0 },
-];
-
-const pickZombieKindForSpawn = (rareFactor) => {
-  const rf = clamp(rareFactor, 0, 1);
-  const roll = Math.random();
-  let cumulative = 0;
-  for (const { kind, base, rare } of ZOMBIE_SPAWN_WEIGHTS) {
-    const weight = Math.max(0, base + rare * rf);
-    cumulative += weight;
-    if (roll < cumulative) return kind;
-  }
-  return "normal";
-};
-
 function getFreeSpawnNear(px, py, walls, tries = 16) {
   const offsetX = 140;
   const offsetY = 120;
@@ -147,7 +96,6 @@ export function createInitialState(makeWalls, makePlayer) {
     mines: [],
     explosions: [],
     slashes: [],
-    villagers: [],
     walls,
     keys: {},
     mouse: { x: 0, y: 0, down: false },
@@ -167,24 +115,15 @@ export function createInitialState(makeWalls, makePlayer) {
   // стартовые предметы вокруг игрока
   const cx = player.x;
   const cy = player.y;
-  const startingItems = [
+  state.items.push(
     makeItem(cx + 120, cy + 20, "bat"),
     makeItem(cx - 140, cy - 20, "pistol"),
     makeItem(cx + 40, cy - 130, "ammo"),
     makeItem(cx + 10, cy + 180, "mine"),
     makeItem(cx - 60, cy + 130, "medkit"),
     makeItem(cx + 180, cy - 40, "shotgun"),
-    makeItem(cx - 200, cy + 40, "glaive"),
-  ];
-  state.items.push(...startingItems);
-
-  for (let i = 0; i < INITIAL_VILLAGERS; i++) {
-    const offsetAng = (Math.PI * 2 * i) / INITIAL_VILLAGERS;
-    const dist = 140 + Math.random() * 120;
-    const vx = clamp(cx + Math.cos(offsetAng) * dist, WALL_THICKNESS + 60, WORLD.w - WALL_THICKNESS - 60);
-    const vy = clamp(cy + Math.sin(offsetAng) * dist, WALL_THICKNESS + 60, WORLD.h - WALL_THICKNESS - 60);
-    state.villagers.push(makeVillager(vx, vy));
-  }
+    makeItem(cx - 200, cy + 40, "glaive")
+  );
 
   return state;
 }
@@ -227,7 +166,6 @@ export function attack(state, queueFlash) {
         if (dist2(p.x, p.y, t.x, t.y) > arcRange2) continue;
         const angToTarget = Math.atan2(t.y - p.y, t.x - p.x);
         if (Math.abs(angleDiff(angToTarget, p.facing)) > arcHalf) continue;
-        if (!hasLineOfSight(p.x, p.y, t.x, t.y, state.walls)) continue;
         t.hp -= damage;
         t.x += Math.cos(p.facing) * 12;
         t.y += Math.sin(p.facing) * 12;
@@ -556,44 +494,34 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   const villagersToConvert = new Set();
   for (const z of state.zombies) {
     z.age += dt;
-    let target = p;
-    let targetType = "player";
-    let bestDist2 = dist2(z.x, z.y, p.x, p.y);
-    for (const villager of state.villagers) {
-      const d = dist2(z.x, z.y, villager.x, villager.y);
-      if (d < bestDist2) {
-        bestDist2 = d;
-        target = villager;
-        targetType = "villager";
-      }
-    }
-
-    const distToTarget = Math.sqrt(bestDist2);
-    let moveAng = angleBetween(z.x, z.y, target.x, target.y);
-    let speed = z.speed || ZOMBIE_BASE_SPEED;
+    const angToPlayer = angleBetween(z.x, z.y, p.x, p.y);
+    const d2p = dist2(z.x, z.y, p.x, p.y);
+    const distP = Math.sqrt(d2p);
+    let moveAng = angToPlayer;
+    let speed = z.speed || 140;
 
     if (!z.state) z.state = "idle";
 
     if (z.behavior === "charge") {
       z.chargeCD = (z.chargeCD ?? 2.5) - dt;
       if (z.state === "idle") {
-        moveAng = angleBetween(z.x, z.y, target.x, target.y);
-        if (z.chargeCD <= 0 && distToTarget > 180) {
+        moveAng = angToPlayer;
+        if (z.chargeCD <= 0 && distP > 180) {
           z.state = "windup";
           z.stateTimer = 0.45;
-          z.chargeDir = moveAng;
+          z.chargeDir = angToPlayer;
         }
       } else if (z.state === "windup") {
-        moveAng = z.chargeDir ?? moveAng;
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 0.45;
+        moveAng = z.chargeDir ?? angToPlayer;
+        speed = (z.speed || 140) * 0.45;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "charge";
           z.stateTimer = 0.6;
         }
       } else if (z.state === "charge") {
-        moveAng = z.chargeDir ?? moveAng;
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 2.6;
+        moveAng = z.chargeDir ?? angToPlayer;
+        speed = (z.speed || 140) * 2.6;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "recover";
@@ -601,61 +529,62 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
           z.chargeCD = 2.5 + Math.random() * 2.5;
         }
       } else if (z.state === "recover") {
-        moveAng = angleBetween(z.x, z.y, target.x, target.y);
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 0.55;
+        moveAng = angToPlayer;
+        speed = (z.speed || 140) * 0.55;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "idle";
         }
       }
+    } else if (z.behavior === "flank") {
+      z.strafeTimer = (z.strafeTimer ?? 1.2) - dt;
+      if (z.strafeTimer <= 0) {
+        z.strafeTimer = 1.2 + Math.random() * 1.6;
+        if (Math.random() < 0.45) z.strafeDir = (z.strafeDir || 1) * -1;
+      }
+      if (distP > 320) {
+        moveAng = angToPlayer;
+        speed = (z.speed || 140) * 1.15;
+      } else if (distP < 150) {
+        moveAng = angToPlayer + Math.PI;
+        speed = (z.speed || 140) * 1.25;
+      } else {
+        moveAng = angToPlayer + (z.strafeDir || 1) * (Math.PI / 2);
+        speed = z.speed || 140;
+      }
     } else if (z.behavior === "leap") {
       z.leapCD = (z.leapCD ?? 1.4) - dt;
       if (z.state === "idle") {
-        moveAng = angleBetween(z.x, z.y, target.x, target.y);
-        if (z.leapCD <= 0 && distToTarget > 120) {
+        moveAng = angToPlayer;
+        if (z.leapCD <= 0 && distP > 120) {
           z.state = "windup";
           z.stateTimer = 0.22;
-          z.leapAng = moveAng;
+          z.leapAng = angToPlayer;
           z.leapCD = 1.1 + Math.random() * 1.6;
         }
       } else if (z.state === "windup") {
-        moveAng = z.leapAng ?? moveAng;
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 0.25;
+        moveAng = z.leapAng ?? angToPlayer;
+        speed = (z.speed || 140) * 0.25;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "leaping";
           z.stateTimer = 0.32;
         }
       } else if (z.state === "leaping") {
-        moveAng = z.leapAng ?? moveAng;
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 3.1;
+        moveAng = z.leapAng ?? angToPlayer;
+        speed = (z.speed || 140) * 3.1;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "recover";
           z.stateTimer = 0.2;
         }
       } else if (z.state === "recover") {
-        moveAng = angleBetween(z.x, z.y, target.x, target.y);
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 0.6;
+        moveAng = angToPlayer;
+        speed = (z.speed || 140) * 0.6;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "idle";
         }
-      }
-    }
-
-    if (z.kind === "bomber" && z.mineTimer != null) {
-      z.mineTimer -= dt;
-      if (z.mineTimer <= 0) {
-        state.mines.push({
-          x: z.x,
-          y: z.y,
-          r: 16,
-          state: "countdown",
-          timer: BOMBER_COUNTDOWN,
-          id: Math.random().toString(36).slice(2),
-        });
-        z.mineTimer = null;
       }
     }
 
@@ -663,18 +592,28 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     const prevY = z.y;
     let zx = clamp(z.x + Math.cos(moveAng) * speed * dt, 10, WORLD.w - 10);
     let zy = clamp(z.y + Math.sin(moveAng) * speed * dt, 10, WORLD.h - 10);
-
-    if (!z.intangible) {
-      let blocked = false;
+    let blocked = false;
+    for (const w of state.walls) {
+      if (circleRectCollides(zx, zy, z.r, w)) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) {
+      const zx2 = clamp(z.x + Math.cos(moveAng) * speed * dt, 10, WORLD.w - 10);
+      let xok = true;
       for (const w of state.walls) {
         if (circleRectCollides(zx, zy, z.r, w)) {
           blocked = true;
           break;
         }
       }
-      if (blocked) {
-        const zx2 = clamp(z.x + Math.cos(moveAng) * speed * dt, 10, WORLD.w - 10);
-        let xok = true;
+      if (xok) {
+        zx = zx2;
+        zy = z.y;
+      } else {
+        const zy2 = clamp(z.y + Math.sin(moveAng) * speed * dt, 10, WORLD.h - 10);
+        let yok = true;
         for (const w of state.walls) {
           if (circleRectCollides(zx2, z.y, z.r, w)) {
             xok = false;
@@ -706,28 +645,14 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     z.x = zx;
     z.y = zy;
 
-    let damage = 20;
-    if (z.behavior === "charge" && z.state === "charge") damage = 42;
-    else if (z.behavior === "leap" && z.state === "leaping") damage = 28;
-    if (z.kind === "skeleton") damage = 18;
-    else if (z.kind === "ghost") damage = 24;
-    else if (z.kind === "fat") damage = 22;
-    else if (z.kind === "small") damage = 16;
-    else if (z.kind === "bomber") damage = 30;
-    else if (z.kind === "boss") damage = BOSS_ATTACK_DAMAGE * 2.2;
-
-    const applyContact = (entity, type) => {
-      const range = z.kind === "boss" ? BOSS_ATTACK_RANGE : z.r + entity.r + 2;
-      if (dist2(entity.x, entity.y, z.x, z.y) < range * range) {
-        entity.hp -= damage * dt;
-        if (type === "player") {
-          if (entity.hp <= 0) {
-            entity.hp = 0;
-            onDeath && onDeath();
-          }
-        } else if (entity.hp <= 0) {
-          villagersToConvert.add(entity);
-        }
+    if (dist2(p.x, p.y, z.x, z.y) < (z.r + p.r + 2) ** 2) {
+      let damage = 20;
+      if (z.behavior === "charge" && z.state === "charge") damage = 42;
+      else if (z.behavior === "leap" && z.state === "leaping") damage = 28;
+      p.hp -= damage * dt;
+      if (p.hp <= 0) {
+        p.hp = 0;
+        onDeath && onDeath();
       }
     };
 
@@ -971,8 +896,8 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
       zombieKills++;
       grantXp(z.xp ?? XP_PER_KILL);
       const drop = Math.random();
-      const dropX = z.x + rand(-60, 60);
-      const dropY = z.y + rand(-60, 60);
+      const dropX = p.x + rand(-120, 120);
+      const dropY = p.y + rand(-120, 120);
       if (drop < 0.24) state.items.push(makeItem(dropX, dropY, "ammo"));
       else if (drop < 0.3) state.items.push(makeItem(dropX, dropY, "medkit"));
       else if (drop < 0.312) state.items.push(makeItem(dropX, dropY, "mine"));
