@@ -142,9 +142,9 @@ export function createInitialState(makeWalls, makePlayer) {
     dayTime: 0,
     time: 0,
     bossSpawned: false,
+    allowUpdate: false,
   };
 
-  // стартовые предметы вокруг игрока
   const cx = player.x;
   const cy = player.y;
   state.items.push(
@@ -215,14 +215,7 @@ export function attack(state, queueFlash) {
     };
     applyArc(state.zombies);
     applyArc(state.whites);
-    state.slashes.push({
-      x: p.x,
-      y: p.y,
-      ang: p.facing,
-      life: 0.28,
-      maxLife: 0.28,
-      radius: arcRange,
-    });
+    state.slashes.push({ x: p.x, y: p.y, ang: p.facing, life: 0.28, maxLife: 0.28, radius: arcRange });
     p.attackCD = 0.72;
     p.swing = 0.32;
     if (!hit) queueFlash && queueFlash("Мимо");
@@ -247,12 +240,7 @@ export function attack(state, queueFlash) {
       for (let i = 0; i < pellets; i++) {
         const spread = rand(-0.32, 0.32);
         state.bullets.push(
-          makeBullet(p.x, p.y, p.facing + spread, {
-            damage: 18,
-            speed: BULLET_SPEED * 0.82,
-            life: 0.55,
-            radius: 4,
-          })
+          makeBullet(p.x, p.y, p.facing + spread, { damage: 18, speed: BULLET_SPEED * 0.82, life: 0.55, radius: 4 })
         );
       }
       p.ammo -= 3;
@@ -266,14 +254,7 @@ export function attack(state, queueFlash) {
 
   if (p.weapon === "mine") {
     if (p.mines > 0) {
-      state.mines.push({
-        x: p.x,
-        y: p.y,
-        r: 14,
-        state: "arming",
-        timer: 3,
-        id: Math.random().toString(36).slice(2),
-      });
+      state.mines.push({ x: p.x, y: p.y, r: 14, state: "arming", timer: 3, id: Math.random().toString(36).slice(2) });
       p.mines -= 1;
       p.attackCD = 0.3;
       queueFlash && queueFlash("Мина установлена (3с до активации)");
@@ -339,6 +320,9 @@ export function useMedkit(state, queueFlash) {
 }
 
 export function update(state, dt, { canvas, onDeath, queueFlash }) {
+  // ⛔ не обновляем ничего, пока игра не запущена со стороны App.jsx
+  if (!state.allowUpdate) return;
+
   const p = state.player;
   if (!p.maxHp) p.maxHp = PLAYER_MAX_HP;
   p.maxHp = Math.max(p.maxHp, PLAYER_MAX_HP);
@@ -359,9 +343,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
       p.nextLevelXp = Math.round(p.nextLevelXp * 1.35 + 25);
       leveled = true;
     }
-    if (leveled && queueFlash) {
-      queueFlash(`Новый уровень: ${p.level}`);
-    }
+    if (leveled && queueFlash) queueFlash(`Новый уровень: ${p.level}`);
   };
 
   // движение игрока
@@ -409,9 +391,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     state.mouse.down = false;
   }
 
-  if (keys["KeyE"]) {
-    tryPickup(state, queueFlash);
-  }
+  if (keys["KeyE"]) tryPickup(state, queueFlash);
 
   // пули игрока
   for (const b of state.bullets) {
@@ -434,10 +414,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   state.spawn.min = Math.max(0.2, 0.65 - state.time / 210);
   state.spawn.timer -= dt;
   if (state.spawn.timer <= 0 && state.zombies.length < ZOMBIE_MAX_ON_FIELD) {
-    state.spawn.interval = Math.max(
-      state.spawn.min,
-      state.spawn.interval * (0.955 - rareFactor * 0.06)
-    );
+    state.spawn.interval = Math.max(state.spawn.min, state.spawn.interval * (0.955 - rareFactor * 0.06));
     state.spawn.timer = state.spawn.interval * rand(0.45, 1.05);
     const spot = getFreeSpawnNear(p.x, p.y, state.walls);
     const bomberChance = 0.04 + rareFactor * 0.08;
@@ -452,25 +429,8 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     else if (roll < bomberChance + ghostChance) kind = "ghost";
     else if (roll < bomberChance + ghostChance + skeletonChance) kind = "skeleton";
     else if (roll < bomberChance + ghostChance + skeletonChance + bruteChance) kind = "brute";
-    else if (
-      roll <
-      bomberChance +
-        ghostChance +
-        skeletonChance +
-        bruteChance +
-        smallChance
-    )
-      kind = "small";
-    else if (
-      roll <
-      bomberChance +
-        ghostChance +
-        skeletonChance +
-        bruteChance +
-        smallChance +
-        fatChance
-    )
-      kind = "fat";
+    else if (roll < bomberChance + ghostChance + skeletonChance + bruteChance + smallChance) kind = "small";
+    else if (roll < bomberChance + ghostChance + skeletonChance + bruteChance + smallChance + fatChance) kind = "fat";
     state.zombies.push(makeZombie(spot.x, spot.y, kind));
   }
 
@@ -486,10 +446,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     state.whiteSpawn.min = Math.max(0.45, WHITE_SPAWN_MIN - state.time / 260);
     state.whiteSpawn.timer -= dt;
     if (state.whiteSpawn.timer <= 0) {
-      state.whiteSpawn.interval = Math.max(
-        state.whiteSpawn.min,
-        state.whiteSpawn.interval * (0.965 - rareFactor * 0.05)
-      );
+      state.whiteSpawn.interval = Math.max(state.whiteSpawn.min, state.whiteSpawn.interval * (0.965 - rareFactor * 0.05));
       state.whiteSpawn.timer = state.whiteSpawn.interval * rand(0.6, 1.1);
       const spot = getFreeSpawnNear(p.x, p.y, state.walls);
       const witchChance = Math.min(0.08, 0.02 + state.time / 2400);
@@ -565,20 +522,19 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
   for (const z of state.zombies) {
     z.age += dt;
     let target = p;
-    let targetType = "player";
     let bestDist2 = dist2(z.x, z.y, p.x, p.y);
     for (const villager of state.villagers) {
       const d = dist2(z.x, z.y, villager.x, villager.y);
       if (d < bestDist2) {
         bestDist2 = d;
         target = villager;
-        targetType = "villager";
       }
     }
 
     const distToTarget = Math.sqrt(bestDist2);
     let moveAng = angleBetween(z.x, z.y, target.x, target.y);
-    let speed = z.speed || ZOMBIE_BASE_SPEED;
+    let speed = z.speed || BOSS_SPEED || 0; // speed fallback
+    if (!z.speed) speed = 140; // default for regular zombies
 
     if (!z.state) z.state = "idle";
 
@@ -593,7 +549,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         }
       } else if (z.state === "windup") {
         moveAng = z.chargeDir ?? moveAng;
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 0.45;
+        speed = (z.speed || 140) * 0.45;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "charge";
@@ -601,7 +557,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         }
       } else if (z.state === "charge") {
         moveAng = z.chargeDir ?? moveAng;
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 2.6;
+        speed = (z.speed || 140) * 2.6;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "recover";
@@ -610,11 +566,9 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         }
       } else if (z.state === "recover") {
         moveAng = angleBetween(z.x, z.y, target.x, target.y);
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 0.55;
+        speed = (z.speed || 140) * 0.55;
         z.stateTimer -= dt;
-        if (z.stateTimer <= 0) {
-          z.state = "idle";
-        }
+        if (z.stateTimer <= 0) z.state = "idle";
       }
     } else if (z.behavior === "leap") {
       z.leapCD = (z.leapCD ?? 1.4) - dt;
@@ -628,7 +582,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         }
       } else if (z.state === "windup") {
         moveAng = z.leapAng ?? moveAng;
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 0.25;
+        speed = (z.speed || 140) * 0.25;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "leaping";
@@ -636,7 +590,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         }
       } else if (z.state === "leaping") {
         moveAng = z.leapAng ?? moveAng;
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 3.1;
+        speed = (z.speed || 140) * 3.1;
         z.stateTimer -= dt;
         if (z.stateTimer <= 0) {
           z.state = "recover";
@@ -644,25 +598,16 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         }
       } else if (z.state === "recover") {
         moveAng = angleBetween(z.x, z.y, target.x, target.y);
-        speed = (z.speed || ZOMBIE_BASE_SPEED) * 0.6;
+        speed = (z.speed || 140) * 0.6;
         z.stateTimer -= dt;
-        if (z.stateTimer <= 0) {
-          z.state = "idle";
-        }
+        if (z.stateTimer <= 0) z.state = "idle";
       }
     }
 
     if (z.kind === "bomber" && z.mineTimer != null) {
       z.mineTimer -= dt;
       if (z.mineTimer <= 0) {
-        state.mines.push({
-          x: z.x,
-          y: z.y,
-          r: 16,
-          state: "countdown",
-          timer: BOMBER_COUNTDOWN,
-          id: Math.random().toString(36).slice(2),
-        });
+        state.mines.push({ x: z.x, y: z.y, r: 16, state: "countdown", timer: BOMBER_COUNTDOWN, id: Math.random().toString(36).slice(2) });
         z.mineTimer = null;
       }
     }
@@ -740,9 +685,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     };
 
     applyContact(p, "player");
-    for (const villager of state.villagers) {
-      applyContact(villager, "villager");
-    }
+    for (const villager of state.villagers) applyContact(villager, "villager");
 
     for (const b of state.bullets) {
       const br = b.radius ?? 3;
@@ -758,15 +701,12 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     w.age += dt;
     const angToP = angleBetween(w.x, w.y, p.x, p.y);
     const d2p = dist2(w.x, w.y, p.x, p.y);
-
     const baseSpeed = w.type === "witch" ? WHITE_BASE_SPEED * 0.75 : WHITE_BASE_SPEED;
 
     const tryStep = (ang) => {
       const sx = clamp(w.x + Math.cos(ang) * baseSpeed * dt, 10, WORLD.w - 10);
       const sy = clamp(w.y + Math.sin(ang) * baseSpeed * dt, 10, WORLD.h - 10);
-      for (const wall of state.walls) {
-        if (circleRectCollides(sx, sy, w.r, wall)) return null;
-      }
+      for (const wall of state.walls) if (circleRectCollides(sx, sy, w.r, wall)) return null;
       return { x: sx, y: sy };
     };
 
@@ -814,9 +754,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
               break;
             }
           }
-          if (!blocked) {
-            state.zombies.push(makeZombie(sx, sy, "skeleton"));
-          }
+          if (!blocked) state.zombies.push(makeZombie(sx, sy, "skeleton"));
         }
         w.summonCD = WITCH_SUMMON_INTERVAL;
       }
@@ -837,68 +775,29 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         m.timer -= dt;
         if (m.timer <= 0) {
           state.explosions.push({ x: m.x, y: m.y, r: 0, life: 0.35 });
-          state.zombies.forEach((z) => {
-            if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
-          });
-          state.whites.forEach((w) => {
-            if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
-          });
-          state.villagers.forEach((villager) => {
-            if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
-              villagersToConvert.add(villager);
-          });
-          if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
-            p.hp = 0;
-            onDeath && onDeath();
-          }
+          state.zombies.forEach((z) => { if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0; });
+          state.whites.forEach((w) => { if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0; });
+          state.villagers.forEach((villager) => { if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2) villagersToConvert.add(villager); });
+          if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) { p.hp = 0; onDeath && onDeath(); }
           continue;
         }
         keep.push(m);
         continue;
       }
-      if (m.state !== "armed") {
-        keep.push(m);
-        continue;
-      }
+      if (m.state !== "armed") { keep.push(m); continue; }
 
       let exploded = false;
-      for (const z of state.zombies) {
-        if (dist2(m.x, m.y, z.x, z.y) < (m.r + z.r) ** 2) {
-          exploded = true;
-          break;
-        }
-      }
-      if (!exploded) {
-        for (const w of state.whites) {
-          if (dist2(m.x, m.y, w.x, w.y) < (m.r + w.r) ** 2) {
-            exploded = true;
-            break;
-          }
-        }
-      }
-      if (!exploded && dist2(m.x, m.y, p.x, p.y) < (m.r + p.r) ** 2) {
-        exploded = true;
-      }
+      for (const z of state.zombies) { if (dist2(m.x, m.y, z.x, z.y) < (m.r + z.r) ** 2) { exploded = true; break; } }
+      if (!exploded) { for (const w of state.whites) { if (dist2(m.x, m.y, w.x, w.y) < (m.r + w.r) ** 2) { exploded = true; break; } } }
+      if (!exploded && dist2(m.x, m.y, p.x, p.y) < (m.r + p.r) ** 2) exploded = true;
 
       if (exploded) {
         state.explosions.push({ x: m.x, y: m.y, r: 0, life: 0.35 });
-        state.zombies.forEach((z) => {
-          if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
-        });
-        state.whites.forEach((w) => {
-          if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
-        });
-        state.villagers.forEach((villager) => {
-          if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
-            villagersToConvert.add(villager);
-        });
-        if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
-          p.hp = 0;
-          onDeath && onDeath();
-        }
-      } else {
-        keep.push(m);
-      }
+        state.zombies.forEach((z) => { if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0; });
+        state.whites.forEach((w) => { if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0; });
+        state.villagers.forEach((villager) => { if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2) villagersToConvert.add(villager); });
+        if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) { p.hp = 0; onDeath && onDeath(); }
+      } else keep.push(m);
     }
     state.mines = keep;
   }
@@ -916,10 +815,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
 
   if (state.slashes.length) {
     const keepSlashes = [];
-    for (const slash of state.slashes) {
-      slash.life -= dt;
-      if (slash.life > 0) keepSlashes.push(slash);
-    }
+    for (const slash of state.slashes) { slash.life -= dt; if (slash.life > 0) keepSlashes.push(slash); }
     state.slashes = keepSlashes;
   }
 
@@ -928,19 +824,11 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
     eb.x += Math.cos(eb.ang) * ENEMY_BULLET_SPEED * dt;
     eb.y += Math.sin(eb.ang) * ENEMY_BULLET_SPEED * dt;
     eb.life -= dt;
-    for (const w of state.walls) {
-      if (circleRectCollides(eb.x, eb.y, 4, w)) {
-        eb.life = 0;
-        break;
-      }
-    }
+    for (const w of state.walls) { if (circleRectCollides(eb.x, eb.y, 4, w)) { eb.life = 0; break; } }
     if (eb.life > 0 && dist2(eb.x, eb.y, p.x, p.y) < (p.r + 3) ** 2) {
       p.hp -= 36 * dt * 3;
       eb.life = 0;
-      if (p.hp <= 0) {
-        p.hp = 0;
-        onDeath && onDeath();
-      }
+      if (p.hp <= 0) { p.hp = 0; onDeath && onDeath(); }
     }
     if (eb.life > 0) {
       for (const villager of state.villagers) {
@@ -964,9 +852,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash }) {
         if (roll < 0.33) kind = "ghost";
         else if (roll < 0.66) kind = "skeleton";
         state.zombies.push(makeZombie(villager.x, villager.y, kind));
-      } else {
-        keepVillagers.push(villager);
-      }
+      } else keepVillagers.push(villager);
     }
     state.villagers = keepVillagers;
   }
