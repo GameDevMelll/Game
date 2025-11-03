@@ -60,6 +60,8 @@ export default function App() {
     if (!AudioCtx) return;
     if (!audioCtxRef.current) {
       const ctx = new AudioCtx();
+
+      // шум фона
       const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
       const data = noiseBuffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) {
@@ -68,11 +70,13 @@ export default function App() {
       const noiseSource = ctx.createBufferSource();
       noiseSource.buffer = noiseBuffer;
       noiseSource.loop = true;
+
       const ambientGain = ctx.createGain();
       ambientGain.gain.value = 0.05;
       noiseSource.connect(ambientGain).connect(ctx.destination);
       noiseSource.start();
 
+      // простая мелодия
       const melodyOsc = ctx.createOscillator();
       melodyOsc.type = "triangle";
       melodyOsc.frequency.value = 320;
@@ -111,6 +115,7 @@ export default function App() {
 
       // старт
       if (mode === "start" && e.type === "keydown" && (e.code === "Space" || e.code === "Enter")) {
+        console.log("Start pressed");
         setMode("play");
         setRunning(true);
         ensureAudio();
@@ -129,22 +134,22 @@ export default function App() {
         return;
       }
 
-      // рестарт после смерти
+      // рестарт
       if (mode === "dead" && e.type === "keydown" && e.code === "KeyR") {
         restart();
         return;
       }
 
-      // аптечка по Q
+      // аптечка
       if (e.type === "keydown" && e.code === "KeyQ" && mode === "play") {
         if (e.repeat) return;
         useMedkit(stateRef.current, queueFlash);
         return;
       }
 
-      // выбор по цифрам 1..5
+      // выбор оружия 1..5
       if (e.type === "keydown" && mode === "play" && e.code.startsWith("Digit")) {
-        const slot = Number(e.code.slice(5)) - 1; // Digit1 -> 0
+        const slot = Number(e.code.slice(5)) - 1;
         if (slot >= 0 && slot < p.weapons.length) {
           p.weapon = p.weapons[slot];
           queueFlash(`Выбрано оружие: ${p.weapon}`);
@@ -160,15 +165,18 @@ export default function App() {
       st.mouse.x = e.clientX - rect.left;
       st.mouse.y = e.clientY - rect.top;
     };
+
     const onMouseDown = () => {
       const st = stateRef.current;
       st.mouse.down = true;
       if (mode === "start") {
+        console.log("Mouse start click");
         setMode("play");
         setRunning(true);
         ensureAudio();
       }
     };
+
     const onMouseUp = () => {
       const st = stateRef.current;
       st.mouse.down = false;
@@ -189,19 +197,22 @@ export default function App() {
     };
   }, [mode]);
 
-  // цикл
+  // цикл обновления
   useEffect(() => {
     let frame;
     let last = 0;
+
     const loop = (t) => {
       const canvas = canvasRef.current;
       if (!canvas) {
         frame = requestAnimationFrame(loop);
         return;
       }
+
       const ctx = canvas.getContext("2d");
       const dt = Math.min(0.033, (t - last) / 1000);
       last = t;
+
       if (mode === "play" && running) {
         update(stateRef.current, dt, {
           canvas,
@@ -209,8 +220,10 @@ export default function App() {
           queueFlash,
         });
       }
+
       draw(ctx, stateRef.current, mode, best);
 
+      // звук
       if (audioCtxRef.current && ambientGainRef.current) {
         const ctxTime = audioCtxRef.current.currentTime;
         const hostiles =
@@ -220,6 +233,7 @@ export default function App() {
         const active = mode === "play" && running;
         const targetAmb = active ? 0.06 + intensity * 0.2 : 0.02;
         ambientGainRef.current.gain.setTargetAtTime(targetAmb, ctxTime, 0.5);
+
         if (melodyRef.current) {
           const melState = melodyStateRef.current;
           melState.timer += dt;
@@ -230,24 +244,35 @@ export default function App() {
             melodyRef.current.osc.frequency.setTargetAtTime(notes[melState.step], ctxTime, 0.35);
           }
           const targetMel = active ? 0.02 + intensity * 0.12 : 0.0;
-          melodyRef.current.gain.setTargetAtTime(targetMel, ctxTime, 0.4);
+          // исправлено: обращаемся к gain.gain, а не gain напрямую
+          melodyRef.current.gain.gain.setTargetAtTime(targetMel, ctxTime, 0.4);
         }
       }
 
       frame = requestAnimationFrame(loop);
     };
+
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
   }, [mode, running, best]);
 
   return (
-    <div className="w-screen h-screen relative bg-slate-900 overflow-hidden">
+    <div className="w-screen h-screen relative bg-slate-900 overflow-hidden select-none">
       <canvas ref={canvasRef} width={1280} height={720} className="w-full h-full block" />
+
+      {/* флеш-сообщения */}
       {flash && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-4 py-2 rounded-xl shadow">
           {flash}
         </div>
       )}
+
+      {/* индикатор режима */}
+      <div className="absolute bottom-2 left-2 text-xs text-slate-400 font-mono">
+        MODE: {mode} {running ? "(running)" : "(stopped)"}
+      </div>
+
+      {/* подсказки управления */}
       <div className="absolute top-3 right-3 bg-slate-900/50 text-white text-xs rounded-lg px-3 py-2 pointer-events-none backdrop-blur">
         <div className="font-semibold mb-1">Управление</div>
         <div>WASD / стрелки — движение</div>
