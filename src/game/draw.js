@@ -3,7 +3,6 @@ import {
   NIGHT_DURATION,
   DAY_NIGHT_CYCLE,
   PLAYER_MAX_HP,
-  DASH_COOLDOWN,
 } from "./constants.js";
 import { clamp, lerpColor } from "./utils.js";
 
@@ -12,7 +11,7 @@ export function draw(ctx, state, mode, bestScore) {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
 
-  // ====== day/night ======
+  // день/ночь
   const t = state.dayTime % DAY_NIGHT_CYCLE;
   let nightK = 0;
   if (t < DAY_DURATION) nightK = t / DAY_DURATION;
@@ -30,19 +29,19 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
   ctx.fillRect(0, 0, w, h);
 
-  // ====== camera ======
+  // камера
   ctx.save();
   const camX = p.x - w / 2;
   const camY = p.y - h / 2;
   ctx.translate(-camX, -camY);
 
-  // walls
+  // стены
   ctx.fillStyle = "#92a086";
   for (const wall of state.walls) {
     ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
   }
 
-  // grid with transition
+  // сетка с плавным цветом
   const tile = 110;
   const gridCol = lerpColor(
     { r: 148, g: 163, b: 184, a: 0.55 },
@@ -64,7 +63,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.stroke();
   }
 
-  // items
+  // предметы
   for (const it of state.items) {
     ctx.save();
     ctx.translate(it.x, it.y);
@@ -104,7 +103,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // mines
+  // мины, которые поставил игрок
   for (const m of state.mines) {
     ctx.save();
     ctx.translate(m.x, m.y);
@@ -123,7 +122,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // explosions
+  // взрывы
   for (const ex of state.explosions) {
     const alpha = Math.max(0, ex.life / 0.35);
     ctx.save();
@@ -140,7 +139,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // zombies
+  // зомби
   for (const z of state.zombies) {
     ctx.save();
     ctx.translate(z.x, z.y);
@@ -163,7 +162,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // shooters
+  // стрелки
   for (const wht of state.whites) {
     ctx.save();
     ctx.translate(wht.x, wht.y);
@@ -186,7 +185,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // bullets
+  // пули игрока
   ctx.fillStyle = "#111";
   for (const b of state.bullets) {
     ctx.beginPath();
@@ -194,7 +193,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fill();
   }
 
-  // enemy bullets
+  // пули врагов
   ctx.fillStyle = "#f97316";
   for (const eb of state.enemyBullets) {
     ctx.beginPath();
@@ -202,7 +201,15 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fill();
   }
 
-  // player
+  // пули босса
+  ctx.fillStyle = "#e11d48";
+  for (const bb of state.bossBullets) {
+    ctx.beginPath();
+    ctx.arc(bb.x, bb.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // игрок
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.fillStyle = "rgba(0,0,0,0.12)";
@@ -236,10 +243,28 @@ export function draw(ctx, state, mode, bestScore) {
   }
   ctx.restore();
 
-  ctx.restore(); // camera
+  // босс
+  if (state.boss) {
+    const b = state.boss;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 38, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#991b1b";
+    ctx.beginPath();
+    ctx.arc(0, 0, b.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(-10, -8, 6, 4);
+    ctx.fillRect(4, -8, 6, 4);
+    ctx.restore();
+  }
 
-  // ====== HUD ======
-  // HP
+  ctx.restore(); // камера
+
+  // ==== HUD ====
   const hudW = 220;
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(18, 16, hudW, 30);
@@ -252,19 +277,7 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.strokeStyle = "rgba(0,0,0,0.2)";
   ctx.strokeRect(56, 22, hudW - 66, 18);
 
-  // DASH бар (под HP)
-  const dashY = 50;
-  const dashW = hudW;
-  ctx.fillStyle = "rgba(15,23,42,0.35)";
-  ctx.fillRect(18, dashY, dashW, 6);
-  let dashRatio = 1;
-  if (p.dashCD > 0) {
-    dashRatio = 1 - Math.min(1, p.dashCD / DASH_COOLDOWN);
-  }
-  ctx.fillStyle = dashRatio >= 1 ? "#22c55e" : "#94a3b8";
-  ctx.fillRect(18, dashY, dashW * dashRatio, 6);
-
-  // weapon HUD
+  // оружие
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(w - 230, 16, 210, 74);
   ctx.fillStyle = "#fff";
@@ -272,7 +285,7 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
   ctx.fillText(`Мины: ${p.mines}`, w - 220, 72);
 
-  // kills (без рекорда)
+  // убито
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(14, h - 64, 180, 44);
   ctx.fillStyle = "#fff";
@@ -329,13 +342,28 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillText(String(i + 1), sx + 5, sy + 13);
   }
 
-  // night overlay
+  // полоса босса
+  if (state.boss) {
+    const b = state.boss;
+    const ratio = clamp(b.hp / b.maxHp, 0, 1);
+    const bw = 360;
+    ctx.fillStyle = "rgba(15,23,42,0.65)";
+    ctx.fillRect(w / 2 - bw / 2, 18, bw, 20);
+    ctx.fillStyle = "#ef4444";
+    ctx.fillRect(w / 2 - bw / 2, 18, bw * ratio, 20);
+    ctx.fillStyle = "#fff";
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Босс", w / 2, 33);
+  }
+
+  // ночной слой
   if (nightK > 0.05) {
     ctx.fillStyle = `rgba(15,23,42,${0.35 * nightK})`;
     ctx.fillRect(0, 0, w, h);
   }
 
-  // overlays
+  // оверлеи
   if (mode === "start") {
     ctx.fillStyle = "rgba(15,23,42,0.75)";
     ctx.fillRect(0, 0, w, h);
@@ -344,9 +372,8 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.font = "bold 38px system-ui, sans-serif";
     ctx.fillText("Mope-like Survival", w / 2, h / 2 - 60);
     ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — сменить", w / 2, h / 2 - 20);
-    ctx.fillText("Shift — рывок", w / 2, h / 2 + 4);
-    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 28);
+    ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — сменить, Shift — рывок", w / 2, h / 2 - 20);
+    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 20);
   } else if (mode === "pause") {
     ctx.fillStyle = "rgba(15,23,42,0.6)";
     ctx.fillRect(0, 0, w, h);
