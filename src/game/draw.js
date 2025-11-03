@@ -1,6 +1,23 @@
 export function draw(ctx, state, mode, bestScore) {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
+
+  // очищаем экран перед кадром
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(0, 0, w, h);
+
+  // игрок (отрисовываем всегда, если есть)
+  if (state.player) {
+    const p = state.player;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.fillStyle = "#38bdf8";
+    ctx.beginPath();
+    ctx.arc(0, 0, p.r || 17, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // предметы
   for (const it of state.items) {
     ctx.save();
@@ -55,21 +72,39 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.restore();
   }
 
-  // ... (дальше по файлу всё остальное)
+  // ==========================
+  // OVERLAYS (экраны)
+  // ==========================
 
-  // overlays
+  // --- экран старта ---
   if (mode === "start") {
-    ctx.fillStyle = "rgba(15,23,42,0.75)";
+    ctx.fillStyle = "rgba(15,23,42,0.6)";
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
     ctx.font = "bold 38px system-ui, sans-serif";
     ctx.fillText("Mope-like Survival", w / 2, h / 2 - 60);
     ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText("WASD — движение, мышь/Space — атака, E — подобрать, Q — аптечка", w / 2, h / 2 - 20);
-    ctx.fillText("Берегите жителей — монстры охотятся и за ними", w / 2, h / 2 + 4);
-    ctx.fillText("Нажмите ЛКМ или Space, чтобы начать", w / 2, h / 2 + 28);
-  } else if (mode === "pause") {
+    ctx.fillText(
+      "WASD — движение, мышь/Space — атака, E — подобрать, Q — аптечка",
+      w / 2,
+      h / 2 - 20
+    );
+    ctx.fillText(
+      "Берегите жителей — монстры охотятся и за ними",
+      w / 2,
+      h / 2 + 4
+    );
+    ctx.fillText(
+      "Нажмите ЛКМ или Space, чтобы начать",
+      w / 2,
+      h / 2 + 28
+    );
+    // 🔹 Без return — обновление не блокируется
+  }
+
+  // --- пауза ---
+  if (mode === "pause") {
     ctx.fillStyle = "rgba(15,23,42,0.6)";
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = "#fff";
@@ -78,7 +113,10 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillText("Пауза", w / 2, h / 2 - 8);
     ctx.font = "16px system-ui, sans-serif";
     ctx.fillText("Нажмите Esc, чтобы продолжить", w / 2, h / 2 + 26);
-  } else if (mode === "dead") {
+  }
+
+  // --- смерть ---
+  if (mode === "dead") {
     ctx.fillStyle = "rgba(15,23,42,0.7)";
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = "#fff";
