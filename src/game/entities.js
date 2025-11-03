@@ -2,6 +2,7 @@ import {
   WORLD,
   PLAYER_MAX_HP,
   ZOMBIE_BASE_SPEED,
+  BOSS_HP,
 } from "./constants.js";
 
 export const makePlayer = () => ({
@@ -31,12 +32,39 @@ export const makeZombie = (x, y, kind = null) => {
     else kind = "normal";
   }
   if (kind === "fat") {
-    return { x, y, r: 16 * 1.4, hp: 34 * 2, maxHp: 34 * 2, speed: ZOMBIE_BASE_SPEED * 0.8, age: 0, kind: "fat" };
+    return {
+      x,
+      y,
+      r: 16 * 1.4,
+      hp: 34 * 2,
+      maxHp: 34 * 2,
+      speed: ZOMBIE_BASE_SPEED * 0.8,
+      age: 0,
+      kind: "fat",
+    };
   }
   if (kind === "small") {
-    return { x, y, r: 16 * 0.5, hp: 34, maxHp: 34, speed: ZOMBIE_BASE_SPEED * 2, age: 0, kind: "small" };
+    return {
+      x,
+      y,
+      r: 16 * 0.5,
+      hp: 34,
+      maxHp: 34,
+      speed: ZOMBIE_BASE_SPEED * 2,
+      age: 0,
+      kind: "small",
+    };
   }
-  return { x, y, r: 16, hp: 34, maxHp: 34, speed: ZOMBIE_BASE_SPEED, age: 0, kind: "normal" };
+  return {
+    x,
+    y,
+    r: 16,
+    hp: 34,
+    maxHp: 34,
+    speed: ZOMBIE_BASE_SPEED,
+    age: 0,
+    kind: "normal",
+  };
 };
 
 export const makeBullet = (x, y, ang) => ({ x, y, ang, life: 1.2 });
@@ -56,4 +84,13 @@ export const makeWhite = (x, y) => ({
   hp: 28,
   age: 0,
   shootCD: 1.6,
+});
+
+export const makeBoss = (x, y) => ({
+  x,
+  y,
+  r: 46,
+  hp: BOSS_HP,
+  maxHp: BOSS_HP,
+  shootCD: 1.5,
 });
