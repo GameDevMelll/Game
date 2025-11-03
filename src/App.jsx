@@ -7,17 +7,18 @@ import { draw } from "./game/draw.js";
 export default function App() {
   const canvasRef = useRef(null);
   const stateRef = useRef(null);
+
   const [mode, setMode] = useState("start"); // start | play | pause | dead
   const [running, setRunning] = useState(false);
   const [flash, setFlash] = useState("");
   const [best, setBest] = useState(0);
 
-  // создаём состояние один раз
+  // создаём стейт один раз
   if (!stateRef.current) {
     stateRef.current = createInitialState(makeWalls, makePlayer);
   }
 
-  // загружаем рекорд
+  // подгружаем рекорд
   useEffect(() => {
     try {
       const b = Number(localStorage.getItem("ms_best") || 0);
@@ -54,12 +55,14 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       const st = stateRef.current;
+      const p = st.player;
       st.keys[e.code] = e.type === "keydown";
 
       // старт
       if (mode === "start" && e.type === "keydown" && (e.code === "Space" || e.code === "Enter")) {
         setMode("play");
         setRunning(true);
+        return;
       }
 
       // пауза
@@ -71,19 +74,29 @@ export default function App() {
           setMode("play");
           setRunning(true);
         }
+        return;
       }
 
-      // рестарт
+      // рестарт после смерти
       if (mode === "dead" && e.type === "keydown" && e.code === "KeyR") {
         restart();
+        return;
       }
 
-      // смена оружия
-      if (mode === "play" && e.type === "keydown" && e.code === "KeyQ") {
-        const p = st.player;
+      // переключение по Q
+      if (e.type === "keydown" && e.code === "KeyQ" && mode === "play") {
         if (p.weapons.length > 1) {
           const idx = p.weapons.indexOf(p.weapon);
           p.weapon = p.weapons[(idx + 1) % p.weapons.length];
+          queueFlash(`Выбрано оружие: ${p.weapon}`);
+        }
+      }
+
+      // выбор по цифрам 1..5
+      if (e.type === "keydown" && mode === "play" && e.code.startsWith("Digit")) {
+        const slot = Number(e.code.slice(5)) - 1; // Digit1 -> 0
+        if (slot >= 0 && slot < p.weapons.length) {
+          p.weapon = p.weapons[slot];
           queueFlash(`Выбрано оружие: ${p.weapon}`);
         }
       }
@@ -97,7 +110,6 @@ export default function App() {
       st.mouse.x = e.clientX - rect.left;
       st.mouse.y = e.clientY - rect.top;
     };
-
     const onMouseDown = () => {
       const st = stateRef.current;
       st.mouse.down = true;
@@ -106,7 +118,6 @@ export default function App() {
         setRunning(true);
       }
     };
-
     const onMouseUp = () => {
       const st = stateRef.current;
       st.mouse.down = false;
@@ -140,7 +151,6 @@ export default function App() {
       const ctx = canvas.getContext("2d");
       const dt = Math.min(0.033, (t - last) / 1000);
       last = t;
-
       if (mode === "play" && running) {
         update(stateRef.current, dt, {
           canvas,
@@ -169,6 +179,7 @@ export default function App() {
         <div>Мышь / Space — атака / поставить мину</div>
         <div>E — подобрать предмет</div>
         <div>Q — сменить оружие</div>
+        <div>1..5 — выбрать слот</div>
         <div>Esc — пауза</div>
         <div>R — рестарт (после смерти)</div>
       </div>
