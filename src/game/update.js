@@ -32,7 +32,7 @@ import {
   BOSS_ATTACK_DAMAGE,
   ZOMBIE_BASE_SPEED,
 } from "./constants.js";
-import { SOUND_KEYS } from "./assets.js";
+import { SOUND_KEYS } from "./assetKeys.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
 import {
   makeZombie,
