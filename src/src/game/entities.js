@@ -1,9 +1,5 @@
 // src/game/entities.js
-import {
-  WORLD,
-  PLAYER_MAX_HP,
-  ZOMBIE_BASE_SPEED,
-} from "./constants";
+import { WORLD, PLAYER_MAX_HP, ZOMBIE_BASE_SPEED } from "./constants.js";
 
 export const makePlayer = () => ({
   x: WORLD.w / 2,
