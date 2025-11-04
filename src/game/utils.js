@@ -17,3 +17,13 @@ export const lerpColor = (c1, c2, t) => {
   }
   return `rgb(${r}, ${g}, ${b})`;
 };
+
+export const drawFlipped = (ctx, image, x, y, flipX, width = image?.width, height = image?.height) => {
+  if (!ctx || !image || !width || !height) return false;
+  ctx.save();
+  ctx.translate(x, y);
+  if (flipX) ctx.scale(-1, 1);
+  ctx.drawImage(image, -width / 2, -height / 2, width, height);
+  ctx.restore();
+  return true;
+};
