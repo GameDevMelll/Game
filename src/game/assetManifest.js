@@ -23,7 +23,7 @@ export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.RANGED]: RangedPng,
   [TEXTURE_KEYS.GHOST]: GhostPng,
   [TEXTURE_KEYS.SKELETON]: null,
-  [TEXTURE_KEYS.WITCH]: { src: RangedPng, tint: "#a855f7" },
+  [TEXTURE_KEYS.WITCH]: RangedPng,
   [TEXTURE_KEYS.BOMBER]: null,
   [TEXTURE_KEYS.BOSS]: null,
   [TEXTURE_KEYS.BOSS2]: null,
