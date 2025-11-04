@@ -16,11 +16,18 @@ export const TEXTURE_KEYS = {
   EXPLOSION: "explosion",
   MEDKIT: "medkit",
   AMMO: "ammo",
-  MINE: "mine",
+  MINE_IDLE: "mine_idle",
+  MINE_ARMED: "mine_armed",
+  BOMB: "bomb",
   SHOTGUN: "shotgun",
-  GLAIVE: "glaive",
+  AXE: "axe",
   PISTOL: "pistol",
   BAT: "bat",
+  MACHINEGUN: "machinegun",
+  PITCHFORK: "pitchfork",
+  GRENADE: "grenade",
+  SHIELD: "shield",
+  CAT: "cat",
 };
 
 export const SOUND_KEYS = {
