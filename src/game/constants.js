@@ -2,10 +2,10 @@
 export const WORLD = { w: 2400, h: 1800 };
 
 // игрок
-export const PLAYER_SPEED = 2300;
+export const PLAYER_SPEED = 23;
 export const PLAYER_DIAM = 34;
-export const PLAYER_MAX_HP = 10000;
-export const PLAYER_LEVEL_HP_BONUS = 12000;
+export const PLAYER_MAX_HP = 100;
+export const PLAYER_LEVEL_HP_BONUS = 120;
 export const PLAYER_MEDKIT_HEAL = 35;
 export const MELEE_RANGE = 55;
 export const MELEE_DAMAGE = 25;
@@ -66,7 +66,7 @@ export const XP_LEVEL_BASE = 110;
 export const INITIAL_VILLAGERS = 6;
 export const VILLAGER_SPAWN_EVERY = 30;
 export const VILLAGER_SPEED = 150;
-export const VILLAGER_MEDKIT_DROP_INTERVAL = 15000;
+export const VILLAGER_MEDKIT_DROP_INTERVAL = 15;
 
 // кошки
 export const CAT_SPAWN_FACTOR = 6;
