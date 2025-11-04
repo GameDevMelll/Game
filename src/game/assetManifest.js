@@ -13,7 +13,7 @@ import mineArmedPng from "../assets/textures/mine_armed.png";
 import pitchforkPng from "../assets/textures/pitchfork.png";
 import shieldPng from "../assets/textures/shield.png";
 import medkitIconPng from "../assets/textures/medkit_icon.png";
-import backPng from "../assets/textures/back.png";
+import backPng from "../assets/textures/back2.png";
 
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: backPng,
