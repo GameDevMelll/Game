@@ -1,31 +1,17 @@
+// src/game/assetManifest.js
 import { TEXTURE_KEYS, SOUND_KEYS } from "./assetKeys.js";
+import zombiePng from "../assets/textures/zom-removebg-preview.png"; // твой спрайт
+import GhostPng from "../assets/textures/Ghost-removebg-preview.png";
+import RangedPng from "../assets/textures/Ranged-removebg-preview.png";
 
-/**
- * Манифест ресурсов.
- *
- * Чтобы поменять текстуру или звук, добавьте файл в проект (например, в папку
- * `public/textures` или `src/assets`) и импортируйте его здесь. Затем укажите
- * путь в соответствующем поле манифеста. Пример:
- *
- * import customPlayer from "../assets/textures/my-player.png";
- *
- * export const TEXTURE_MANIFEST = {
- *   ...
- *   [TEXTURE_KEYS.PLAYER]: customPlayer,
- * };
- *
- * Файлы со звуками можно настроить аналогично. Дополнительно можно указать
- * значение `gain`, чтобы подстроить громкость (например, `{ src: myFx, gain: 0.4 }`).
- */
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: null,
   [TEXTURE_KEYS.WALL]: null,
   [TEXTURE_KEYS.PLAYER]: null,
   [TEXTURE_KEYS.VILLAGER]: null,
-  [TEXTURE_KEYS.CAT]: null,
-  [TEXTURE_KEYS.ZOMBIE]: null,
-  [TEXTURE_KEYS.RANGED]: null,
-  [TEXTURE_KEYS.GHOST]: null,
+  [TEXTURE_KEYS.ZOMBIE]: zombiePng,        // ← ЗДЕСЬ!
+  [TEXTURE_KEYS.RANGED]: RangedPng,
+  [TEXTURE_KEYS.GHOST]: GhostPng,
   [TEXTURE_KEYS.SKELETON]: null,
   [TEXTURE_KEYS.WITCH]: null,
   [TEXTURE_KEYS.BOMBER]: null,
@@ -37,10 +23,6 @@ export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.MEDKIT]: null,
   [TEXTURE_KEYS.AMMO]: null,
   [TEXTURE_KEYS.MINE]: null,
-  [TEXTURE_KEYS.MINE_IDLE]: null,
-  [TEXTURE_KEYS.MINE_ACTIVE]: null,
-  [TEXTURE_KEYS.BOMB_IDLE]: null,
-  [TEXTURE_KEYS.BOMB_ACTIVE]: null,
   [TEXTURE_KEYS.SHOTGUN]: null,
   [TEXTURE_KEYS.GLAIVE]: null,
   [TEXTURE_KEYS.PISTOL]: null,
