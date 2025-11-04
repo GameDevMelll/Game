@@ -12,6 +12,7 @@ export const TEXTURE_KEYS = {
   BOSS: "boss",
   BOSS2: "boss2",
   BOSS3: "boss3",
+  BOSS2_ENRAGED: "boss2_enraged",
   PROJECTILE_PLAYER: "projectile_player",
   PROJECTILE_ENEMY: "projectile_enemy",
   SLASH: "slash",
@@ -30,6 +31,11 @@ export const TEXTURE_KEYS = {
   GRENADE: "grenade",
   SHIELD: "shield",
   CAT: "cat",
+  CAT_VARIANT2: "cat_variant2",
+  CAT_VARIANT3: "cat_variant3",
+  PLAYER_ALT_2: "player_alt_2",
+  PLAYER_ALT_3: "player_alt_3",
+  PLAYER_ALT_4: "player_alt_4",
 };
 
 export const SOUND_KEYS = {

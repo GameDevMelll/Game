@@ -24,16 +24,22 @@ export default function App() {
   const melodyStateRef = useRef({ timer: 0, step: 0 });
   const audioApiRef = useRef({ play: () => {} });
   const soundsLoadPromiseRef = useRef(null);
+  const selectedSkinRef = useRef("default");
+  const progressReadyRef = useRef(false);
 
   const [mode, setMode] = useState("start"); // start | play | pause | dead | victory
   const [running, setRunning] = useState(false);
   const [flash, setFlash] = useState("");
   const [best, setBest] = useState(0);
   const [victoryStats, setVictoryStats] = useState(null);
+  const [progress, setProgress] = useState({ totalKills: 0, boss2Defeated: false, selectedSkin: "default" });
+  const [selectedSkin, setSelectedSkin] = useState("default");
+  const [restartTip, setRestartTip] = useState("");
 
   // создаём стейт один раз
+  const createPlayerEntity = () => makePlayer({ skin: selectedSkinRef.current });
   if (!stateRef.current) {
-    stateRef.current = createInitialState(makeWalls, makePlayer, assetsRef.current);
+    stateRef.current = createInitialState(makeWalls, createPlayerEntity, assetsRef.current);
   } else if (stateRef.current.assets !== assetsRef.current) {
     stateRef.current.assets = assetsRef.current;
   }
@@ -44,6 +50,33 @@ export default function App() {
       const b = Number(localStorage.getItem("ms_best") || 0);
       if (!Number.isNaN(b)) setBest(b);
     } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("ms_progress_v2");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const initialSkin = parsed?.selectedSkin || "default";
+        selectedSkinRef.current = initialSkin;
+        setSelectedSkin(initialSkin);
+        setProgress({
+          totalKills: Number(parsed?.totalKills) || 0,
+          boss2Defeated: !!parsed?.boss2Defeated,
+          selectedSkin: initialSkin,
+        });
+      } else {
+        selectedSkinRef.current = "default";
+        setSelectedSkin("default");
+      }
+    } catch (err) {
+      selectedSkinRef.current = "default";
+      setSelectedSkin("default");
+    }
+    if (stateRef.current?.player) {
+      stateRef.current.player.skin = selectedSkinRef.current;
+    }
+    progressReadyRef.current = true;
   }, []);
 
   const queueFlash = (msg) => {
@@ -58,6 +91,84 @@ export default function App() {
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
+  const helpfulTips = [
+    "Полезный совет №1 — добавьте свой текст позже.",
+    "Полезный совет №2 — заготовка для будущих подсказок.",
+    "Полезный совет №3 — здесь будет ваш лайфхак.",
+  ];
+
+  const skinOptions = [
+    {
+      id: "default",
+      name: "Стандарт",
+      description: "Базовый выживший. Доступен сразу.",
+    },
+    {
+      id: "skin2",
+      name: "Охотник",
+      description: "Выживает в самой гуще", 
+      requirement: "Рекорд: 500 монстров.",
+    },
+    {
+      id: "skin3",
+      name: "Ветеран",
+      description: "Накопленный опыт — сила.",
+      requirement: "Суммарно 10 000 убийств.",
+    },
+    {
+      id: "skin4",
+      name: "Освободитель",
+      description: "Бой с Боссом №2 закаляет.",
+      requirement: "Убейте Босса №2.",
+    },
+  ];
+
+  const persistProgress = (updater) => {
+    setProgress((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : { ...prev, ...updater };
+      if (progressReadyRef.current) {
+        try {
+          localStorage.setItem("ms_progress_v2", JSON.stringify(next));
+        } catch (err) {}
+      }
+      return next;
+    });
+  };
+
+  const recordRunProgress = (kills, boss2Flag) => {
+    const safeKills = Math.max(0, Math.floor(kills ?? 0));
+    persistProgress((prev) => {
+      const currentTotal = Math.max(0, Math.floor(prev.totalKills ?? 0));
+      return {
+        ...prev,
+        totalKills: currentTotal + safeKills,
+        boss2Defeated: prev.boss2Defeated || !!boss2Flag,
+      };
+    });
+  };
+
+  const totalKills = Math.max(0, Math.floor(progress.totalKills ?? 0));
+  const unlocks = {
+    default: true,
+    skin2: best >= 500,
+    skin3: totalKills >= 10000,
+    skin4: !!progress.boss2Defeated,
+  };
+
+  useEffect(() => {
+    const currentSkin = selectedSkinRef.current;
+    if (!unlocks[currentSkin]) {
+      if (currentSkin !== "default") {
+        selectedSkinRef.current = "default";
+        setSelectedSkin("default");
+        persistProgress((prev) => ({ ...prev, selectedSkin: "default" }));
+      }
+    }
+    if (stateRef.current?.player) {
+      stateRef.current.player.skin = selectedSkinRef.current;
+    }
+  }, [unlocks.skin2, unlocks.skin3, unlocks.skin4]);
+
   const onDeath = () => {
     setRunning(false);
     setMode("dead");
@@ -69,6 +180,10 @@ export default function App() {
       } catch (e) {}
       return next;
     });
+    const boss2Killed = !!stateRef.current?.progress?.boss2Defeated;
+    recordRunProgress(kills, boss2Killed);
+    const tip = helpfulTips[Math.floor(Math.random() * helpfulTips.length)] || "";
+    setRestartTip(tip);
   };
 
   const onVictory = ({ kills = 0, duration = stateRef.current?.time ?? 0 }) => {
@@ -82,39 +197,103 @@ export default function App() {
       } catch (e) {}
       return next;
     });
+    const boss2Killed = !!stateRef.current?.progress?.boss2Defeated;
+    recordRunProgress(kills, boss2Killed);
   };
 
-  const restart = () => {
-    stateRef.current = createInitialState(makeWalls, makePlayer, assetsRef.current);
+  const handleSkinSelect = (skinId) => {
+    if (!unlocks[skinId]) return;
+    selectedSkinRef.current = skinId;
+    setSelectedSkin(skinId);
+    persistProgress((prev) => ({ ...prev, selectedSkin: skinId }));
+    if (stateRef.current?.player) {
+      stateRef.current.player.skin = skinId;
+    }
+  };
+
+  const describeSkinRequirement = (skin) => {
+    switch (skin.id) {
+      case "skin2":
+        return `Рекорд: ${best} / 500`;
+      case "skin3":
+        return `Суммарно: ${totalKills} / 10000`;
+      case "skin4":
+        return progress.boss2Defeated ? "Условие выполнено" : "Убейте Босса №2";
+      default:
+        return "Доступен сразу";
+    }
+  };
+
+  const beginRun = () => {
+    if (!unlocks[selectedSkinRef.current]) return;
+    if (stateRef.current?.player) {
+      stateRef.current.player.skin = selectedSkinRef.current;
+    }
     setMode("play");
     setRunning(true);
     setFlash("");
+    setRestartTip("");
     setVictoryStats(null);
+    ensureAudio();
+  };
+
+  const restart = () => {
+    stateRef.current = createInitialState(makeWalls, createPlayerEntity, assetsRef.current);
+    if (stateRef.current?.player) {
+      stateRef.current.player.skin = selectedSkinRef.current;
+    }
+    setFlash("");
+    setVictoryStats(null);
+    setRestartTip("");
+    beginRun();
   };
 
   const stopAmbientSource = () => {
     const current = ambientSourceRef.current;
-    if (current?.node) {
+    if (!current) return;
+    if (current.node) {
       try {
         current.node.stop();
       } catch (err) {}
+      current.node.disconnect?.();
     }
+    if (Array.isArray(current.helpers)) {
+      for (const helper of current.helpers) {
+        if (!helper) continue;
+        try {
+          helper.stop?.();
+        } catch (err) {}
+        helper.disconnect?.();
+      }
+    }
+    current.gain?.disconnect?.();
     ambientSourceRef.current = null;
   };
 
   const startDefaultAmbient = (ctx) => {
     if (!ambientGainRef.current) return;
-    const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * 0.08;
-    }
-    const noiseSource = ctx.createBufferSource();
-    noiseSource.buffer = noiseBuffer;
-    noiseSource.loop = true;
-    noiseSource.connect(ambientGainRef.current);
-    noiseSource.start();
-    ambientSourceRef.current = { node: noiseSource, type: "noise" };
+    const baseOsc = ctx.createOscillator();
+    baseOsc.type = "sine";
+    baseOsc.frequency.value = 72;
+    const lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 0.18;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 28;
+    lfo.connect(lfoGain).connect(baseOsc.frequency);
+    const tremGain = ctx.createGain();
+    tremGain.gain.value = 0.6;
+    const trem = ctx.createOscillator();
+    trem.type = "sine";
+    trem.frequency.value = 0.08;
+    const tremDepth = ctx.createGain();
+    tremDepth.gain.value = 0.18;
+    trem.connect(tremDepth).connect(tremGain.gain);
+    baseOsc.connect(tremGain).connect(ambientGainRef.current);
+    baseOsc.start();
+    lfo.start();
+    trem.start();
+    ambientSourceRef.current = { node: baseOsc, helpers: [lfo, trem], gain: tremGain, type: "default" };
   };
 
   const applyAmbientBuffer = (ctx, buffer) => {
@@ -171,7 +350,7 @@ export default function App() {
       audioCtxRef.current = ctx;
 
       const ambientGain = ctx.createGain();
-      ambientGain.gain.value = 0.05;
+      ambientGain.gain.value = 0.04;
       ambientGain.connect(ctx.destination);
       ambientGainRef.current = ambientGain;
       applyAmbientBuffer(ctx, null);
@@ -279,9 +458,7 @@ export default function App() {
 
       // старт
       if (mode === "start" && e.type === "keydown" && (e.code === "Space" || e.code === "Enter")) {
-        setMode("play");
-        setRunning(true);
-        ensureAudio();
+        beginRun();
         return;
       }
 
@@ -334,9 +511,7 @@ export default function App() {
       const st = stateRef.current;
       st.mouse.down = true;
       if (mode === "start") {
-        setMode("play");
-        setRunning(true);
-        ensureAudio();
+        beginRun();
       }
     };
     const onMouseUp = () => {
@@ -429,12 +604,127 @@ export default function App() {
     return () => cancelAnimationFrame(frame);
   }, [mode, running, best]);
 
+  const currentRunKills = stateRef.current?.kills ?? 0;
+  const currentDuration = stateRef.current?.time ?? 0;
+
   return (
     <div className="w-screen h-screen relative bg-slate-900 overflow-hidden">
       <canvas ref={canvasRef} width={1280} height={720} className="w-full h-full block" />
       {flash && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-4 py-2 rounded-xl shadow">
           {flash}
+        </div>
+      )}
+
+      {(mode === "start" || mode === "dead") && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/85 backdrop-blur-sm px-4">
+          <div className="bg-slate-800/95 text-white rounded-2xl shadow-2xl w-full max-w-3xl mx-auto p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-3xl font-bold text-emerald-300">
+                  {mode === "start" ? "Готовьтесь к бою" : "Вы пали в бою"}
+                </h2>
+                <div className="text-sm text-slate-300">
+                  {mode === "start"
+                    ? "Выберите скин и начните новый раунд."
+                    : "Подберите новую стратегию и возвращайтесь в бой!"}
+                </div>
+              </div>
+              <div className="text-sm text-right text-slate-300 space-y-1">
+                <div>
+                  Рекорд: <span className="text-emerald-200 font-semibold">{best}</span>
+                </div>
+                <div>
+                  Суммарно: <span className="text-emerald-200 font-semibold">{totalKills}</span>
+                </div>
+                {mode === "dead" && (
+                  <>
+                    <div>
+                      За раунд: <span className="text-emerald-200 font-semibold">{currentRunKills}</span>
+                    </div>
+                    <div>
+                      Длительность: <span className="text-emerald-200 font-semibold">{formatDuration(currentDuration)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            {mode === "dead" && restartTip && (
+              <div className="text-sm text-amber-300 bg-amber-500/10 border border-amber-400/40 rounded-lg px-4 py-2">
+                {restartTip}
+              </div>
+            )}
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-slate-200">Выбор облика</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {skinOptions.map((skin) => {
+                  const unlocked = unlocks[skin.id];
+                  const isSelected = selectedSkin === skin.id;
+                  return (
+                    <button
+                      key={skin.id}
+                      type="button"
+                      onClick={() => handleSkinSelect(skin.id)}
+                      disabled={!unlocks[skin.id]}
+                      className={`text-left rounded-xl border px-4 py-3 transition ${
+                        isSelected
+                          ? "border-emerald-400 ring-2 ring-emerald-400/60"
+                          : "border-slate-600 hover:border-emerald-300/60"
+                      } ${
+                        unlocked
+                          ? "bg-slate-700/70 hover:bg-slate-700/90"
+                          : "bg-slate-700/40 opacity-60 cursor-not-allowed"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-lg font-semibold">{skin.name}</div>
+                        {!unlocked && <span className="text-sm">🔒</span>}
+                        {unlocked && isSelected && <span className="text-sm text-emerald-300">✓</span>}
+                      </div>
+                      <div className="text-xs text-slate-300 mt-1">{skin.description}</div>
+                      {skin.requirement && (
+                        <div className="text-xs text-slate-400 mt-1">{skin.requirement}</div>
+                      )}
+                      <div className={`text-xs mt-2 ${unlocked ? "text-emerald-300" : "text-amber-300"}`}>
+                        {describeSkinRequirement(skin)}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-xs text-slate-400">
+                {mode === "start"
+                  ? "Нажмите Space/Enter или кнопку ниже, чтобы начать."
+                  : "Нажмите R или кнопку ниже для быстрого рестарта."}
+              </div>
+              <div className="flex gap-2 justify-end">
+                {mode === "start" ? (
+                  <button
+                    type="button"
+                    onClick={beginRun}
+                    disabled={!unlocks[selectedSkin]}
+                    className={`px-5 py-2 rounded-lg font-semibold transition ${
+                      unlocks[selectedSkin]
+                        ? "bg-emerald-500 hover:bg-emerald-400 text-slate-900"
+                        : "bg-slate-600 text-slate-300 cursor-not-allowed"
+                    }`}
+                  >
+                    В бой
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={restart}
+                    className="px-5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold transition"
+                  >
+                    Попробовать снова
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
