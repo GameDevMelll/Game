@@ -27,7 +27,7 @@ import bembMp3 from "../assets/music/bemb.mp3"; //
 
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: backPng,
-  [TEXTURE_KEYS.WALL]: wallPng,
+  [TEXTURE_KEYS.WALL]: waaaPng,
   [TEXTURE_KEYS.PLAYER]: null,
   [TEXTURE_KEYS.VILLAGER]: mellPng,
   [TEXTURE_KEYS.ZOMBIE]: zombiePng,      
