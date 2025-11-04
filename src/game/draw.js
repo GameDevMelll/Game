@@ -35,6 +35,13 @@ const WEAPON_TEXTURE_MAP = {
   medkit: TEXTURE_KEYS.MEDKIT,
 };
 
+const PLAYER_TEXTURE_MAP = {
+  default: TEXTURE_KEYS.PLAYER,
+  skin2: TEXTURE_KEYS.PLAYER_ALT_2,
+  skin3: TEXTURE_KEYS.PLAYER_ALT_3,
+  skin4: TEXTURE_KEYS.PLAYER_ALT_4,
+};
+
 const ZOMBIE_TEXTURE_MAP = {
   ghost: TEXTURE_KEYS.GHOST,
   skeleton: TEXTURE_KEYS.SKELETON,
@@ -43,6 +50,13 @@ const ZOMBIE_TEXTURE_MAP = {
   boss1: TEXTURE_KEYS.BOSS,
   boss2: TEXTURE_KEYS.BOSS2,
   boss3: TEXTURE_KEYS.BOSS3,
+};
+
+const CAT_TEXTURE_MAP = {
+  default: TEXTURE_KEYS.CAT,
+  variant1: TEXTURE_KEYS.CAT,
+  variant2: TEXTURE_KEYS.CAT_VARIANT2,
+  variant3: TEXTURE_KEYS.CAT_VARIANT3,
 };
 
 const RANGED_TEXTURE_MAP = {
@@ -567,7 +581,6 @@ export function draw(ctx, state, mode, bestScore) {
   }
 
    // cats
-  const catTexture = getTexture(textures, TEXTURE_KEYS.CAT);
   for (const cat of cats) {
     ctx.save();
     ctx.translate(cat.x, cat.y);
@@ -575,9 +588,14 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.ellipse(0, 5, 14, 7, 0, 0, Math.PI * 2);
     ctx.fill();
+    const catTextureKey = CAT_TEXTURE_MAP[cat.skin] || TEXTURE_KEYS.CAT;
+    const catTexture = getTexture(textures, catTextureKey);
     const drawnCat = drawTextureCircle(ctx, catTexture, cat.r, cat.facingDir === "left");
     if (!drawnCat) {
-      ctx.fillStyle = "#fbbf24";
+      let furColor = "#f8fafc";
+      if (cat.skin === "variant2") furColor = "#facc15";
+      else if (cat.skin === "variant3") furColor = "#38bdf8";
+      ctx.fillStyle = furColor;
       ctx.beginPath();
       ctx.arc(0, 0, cat.r, 0, Math.PI * 2);
       ctx.fill();
@@ -589,7 +607,7 @@ export function draw(ctx, state, mode, bestScore) {
       ctx.lineTo(-9, cat.r * 0.7);
       ctx.moveTo(5, cat.r * 0.3);
       ctx.lineTo(9, cat.r * 0.7);
-      ctx.strokeStyle = "#fbbf24";
+      ctx.strokeStyle = furColor;
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -628,7 +646,7 @@ export function draw(ctx, state, mode, bestScore) {
       ctx.stroke();
       ctx.restore();
     }
-    const textureKey = ZOMBIE_TEXTURE_MAP[z.kind] || TEXTURE_KEYS.ZOMBIE;
+    const textureKey = z.textureKey || ZOMBIE_TEXTURE_MAP[z.kind] || TEXTURE_KEYS.ZOMBIE;
     const zombieTexture = getTexture(textures, textureKey);
     let alpha = 1;
     if (z.kind === "ghost") alpha = 0.55;
@@ -757,7 +775,7 @@ export function draw(ctx, state, mode, bestScore) {
       drawTextureCircle(ctx, enemyBulletTexture, 4);
       ctx.restore();
     } else {
-      ctx.fillStyle = "#f97316";
+      ctx.fillStyle = eb.color || "#f97316";
       ctx.beginPath();
       ctx.arc(eb.x, eb.y, 4, 0, Math.PI * 2);
       ctx.fill();
@@ -772,12 +790,17 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.beginPath();
   ctx.ellipse(0, 10, 22, 10, 0, 0, Math.PI * 2);
   ctx.fill();
-  const playerTexture = getTexture(textures, TEXTURE_KEYS.PLAYER);
+  const playerTextureKey = PLAYER_TEXTURE_MAP[p.skin] || TEXTURE_KEYS.PLAYER;
+  const playerTexture = getTexture(textures, playerTextureKey);
   const playerDrawn = drawTextureCircle(ctx, playerTexture, p.r, flipPlayer);
   if (!playerDrawn) {
-     ctx.save();
+    ctx.save();
     if (flipPlayer) ctx.scale(-1, 1);
-    ctx.fillStyle = "#4f9ee3";
+    let bodyColor = "#4f9ee3";
+    if (p.skin === "skin2") bodyColor = "#34d399";
+    else if (p.skin === "skin3") bodyColor = "#facc15";
+    else if (p.skin === "skin4") bodyColor = "#f97316";
+    ctx.fillStyle = bodyColor;
     ctx.beginPath();
     ctx.arc(0, 0, p.r, 0, Math.PI * 2);
     ctx.fill();

@@ -18,10 +18,11 @@ import {
   CAT_MAX_HP,
   CAT_SPEED,
 } from "./constants.js";
+import { TEXTURE_KEYS } from "./assetKeys.js";
 
 const ZOMBIE_BASE_HP = 34;
 
-export const makePlayer = () => ({
+export const makePlayer = (overrides = {}) => ({
   x: WORLD.w / 2,
   y: WORLD.h / 2,
   r: 17,
@@ -44,6 +45,8 @@ export const makePlayer = () => ({
   dashCD: 0,
   moveX: 0,
   moveY: 0,
+  skin: overrides.skin ?? "default",
+  ...overrides,
 });
 
 const makeBaseZombie = (x, y, kind, overrides = {}) => ({
@@ -224,6 +227,7 @@ export const makeBoss = (x, y, stage = 1) => {
       kind: "boss2",
       shotgunTimer: 1.5,
       phase: "stage1",
+      textureKey: TEXTURE_KEYS.BOSS2,
     });
   }
   if (stage === 3) {
@@ -238,6 +242,7 @@ export const makeBoss = (x, y, stage = 1) => {
       grenadeTimer: 3.5,
       lastDamageTime: 0,
       targetingVillager: false,
+      textureKey: TEXTURE_KEYS.BOSS3,
     });
   }
   return makeBossBase(x, y, {
@@ -245,15 +250,24 @@ export const makeBoss = (x, y, stage = 1) => {
     maxHp: BOSS1_HP,
     speed: BOSS1_SPEED,
     kind: "boss1",
+    textureKey: TEXTURE_KEYS.BOSS,
   });
 };
 
-export const makeCat = (x, y) => ({
-  x,
-  y,
-  r: 10,
-  hp: CAT_MAX_HP,
-  maxHp: CAT_MAX_HP,
-  speed: CAT_SPEED,
-  facingDir: "left",
-});
+export const makeCat = (x, y) => {
+  const roll = Math.random();
+  let variant = "default";
+  if (roll < 1 / 3) variant = "variant1";
+  else if (roll < 2 / 3) variant = "variant2";
+  else variant = "variant3";
+  return {
+    x,
+    y,
+    r: 10,
+    hp: CAT_MAX_HP,
+    maxHp: CAT_MAX_HP,
+    speed: CAT_SPEED,
+    facingDir: "left",
+    skin: variant,
+  };
+};

@@ -31,12 +31,19 @@ import {
   BOSS1_MELEE_DAMAGE,
   BOSS2_SPAWN_DELAY,
   BOSS2_MELEE_DAMAGE,
+  BOSS2_SPEED,
   BOSS2_SHOTGUN_INTERVAL,
   BOSS2_SHOTGUN_PELLETS,
   BOSS2_SHOTGUN_SPREAD,
+  BOSS2_SHOTGUN_DAMAGE,
   BOSS2_PHASE_THRESHOLD,
   BOSS2_SHOTGUN_RANGE,
   BOSS2_SPAWN_RATE_MULTIPLIER,
+  BOSS2_ENRAGED_SPEED_MULT,
+  BOSS2_ENRAGED_SHOTGUN_PELLETS,
+  BOSS2_ENRAGED_SHOTGUN_DAMAGE,
+  BOSS2_ENRAGED_MELEE_MULT,
+  BOSS2_ENRAGED_SHOTGUN_INTERVAL_MULT,
   BOSS3_VILLAGER_WAVE,
   BOSS3_SPAWN_DELAY_AFTER_RESCUE,
   BOSS3_MELEE_DAMAGE,
@@ -48,6 +55,7 @@ import {
   BOSS3_REGEN_DELAY,
   BOSS3_REGEN_RATE,
   BOSS_CONTACT_RANGE,
+  BOSS3_WALL_BREAK_TIME,
   ZOMBIE_BASE_SPEED,
   INVENTORY_SLOTS,
   PLAYER_INVULN_DURATION,
@@ -61,7 +69,7 @@ import {
   MEDKIT_BASE_INTERVAL,
   MEDKIT_MIN_INTERVAL,
 } from "./constants.js";
-import { SOUND_KEYS } from "./assetKeys.js";
+import { SOUND_KEYS, TEXTURE_KEYS } from "./assetKeys.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
 import {
   makeZombie,
@@ -205,6 +213,31 @@ const ensurePlayerInventory = (player) => {
   updateSelectedWeapon(player);
 };
 
+const resolveBossWallOverlap = (entity, walls) => {
+  if (!entity || !walls?.length) return;
+  const radius = entity.r ?? 0;
+  if (radius <= 0) return;
+  for (const wall of walls) {
+    const closestX = clamp(entity.x, wall.x, wall.x + wall.w);
+    const closestY = clamp(entity.y, wall.y, wall.y + wall.h);
+    const dx = entity.x - closestX;
+    const dy = entity.y - closestY;
+    const distSq = dx * dx + dy * dy;
+    if (distSq >= radius * radius) continue;
+    const dist = Math.sqrt(distSq) || 0.0001;
+    const overlap = radius - dist + 0.5;
+    let nx = dx / dist;
+    let ny = dy / dist;
+    if (!Number.isFinite(nx) || !Number.isFinite(ny)) {
+      nx = entity.x < wall.x ? -1 : entity.x > wall.x + wall.w ? 1 : 0;
+      ny = entity.y < wall.y ? -1 : entity.y > wall.y + wall.h ? 1 : 0;
+      if (nx === 0 && ny === 0) ny = -1;
+    }
+    entity.x += nx * overlap;
+    entity.y += ny * overlap;
+  }
+};
+
 const updateSelectedWeapon = (player) => {
   if (!Array.isArray(player.inventory)) {
     player.inventory = Array.from({ length: INVENTORY_SLOTS }, () => null);
@@ -321,6 +354,9 @@ export function createInitialState(makeWalls, makePlayer, assets = null) {
       victoryAnnounced: false,
       lastBossKind: null,
       rescueSoundTimer: null,
+    },
+    progress: {
+      boss2Defeated: false,
     },
     medkitSpawn: {
       timer: MEDKIT_BASE_INTERVAL,
@@ -1013,7 +1049,8 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
     let target = p;
     let targetType = "player";
     let bestDist2 = dist2(z.x, z.y, p.x, p.y);
-     if (aliveCats.length) {
+    const isBoss = z.kind && z.kind.startsWith("boss");
+    if (!isBoss && aliveCats.length) {
       let catTarget = null;
       let catDist2 = Infinity;
       for (const cat of aliveCats) {
@@ -1029,16 +1066,18 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
         bestDist2 = catDist2;
       }
     }
-    for (const villager of state.villagers) {
-      const d = dist2(z.x, z.y, villager.x, villager.y);
-      if (targetType !== "cat" && d < bestDist2) {
-        bestDist2 = d;
-        target = villager;
-        targetType = "villager";
+    if (!isBoss) {
+      for (const villager of state.villagers) {
+        const d = dist2(z.x, z.y, villager.x, villager.y);
+        if (targetType !== "cat" && d < bestDist2) {
+          bestDist2 = d;
+          target = villager;
+          targetType = "villager";
+        }
       }
     }
 
-    if (z.kind === "boss3" && state.villagers.length) {
+    if (z.kind === "boss3" && state.villagers.length && !isBoss) {
       let bestVillager = null;
       let villDist2 = Infinity;
       for (const villager of state.villagers) {
@@ -1072,12 +1111,18 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
         bossFlow.boss2PhaseTriggered = true;
         queueFlash && queueFlash("Босс №2 яростен!");
         playAudio(audio, SOUND_KEYS.BOSS2_PHASE);
+        z.textureKey = TEXTURE_KEYS.BOSS2_ENRAGED;
+        z.speed = BOSS2_SPEED * BOSS2_ENRAGED_SPEED_MULT;
       }
+      const pellets = z.phase === "stage2" ? BOSS2_ENRAGED_SHOTGUN_PELLETS : BOSS2_SHOTGUN_PELLETS;
+      const pelletDamage =
+        z.phase === "stage2" ? BOSS2_ENRAGED_SHOTGUN_DAMAGE : BOSS2_SHOTGUN_DAMAGE;
+      const intervalMultiplier =
+        z.phase === "stage2" ? BOSS2_ENRAGED_SHOTGUN_INTERVAL_MULT : 1;
       if (
         z.shotgunTimer <= 0 &&
         dist2(z.x, z.y, p.x, p.y) < BOSS2_SHOTGUN_RANGE * BOSS2_SHOTGUN_RANGE
       ) {
-        const pellets = BOSS2_SHOTGUN_PELLETS;
         const baseAng = angleBetween(z.x, z.y, p.x, p.y);
         for (let i = 0; i < pellets; i++) {
           const spread = rand(-BOSS2_SHOTGUN_SPREAD, BOSS2_SHOTGUN_SPREAD);
@@ -1087,12 +1132,12 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
             ang: baseAng + spread,
             life: 1.4,
             speed: ENEMY_BULLET_SPEED * 1.1,
-            damageInstant: z.phase === "stage2" ? 42 : 32,
+            damageInstant: pelletDamage,
           });
         }
-        z.shotgunTimer = BOSS2_SHOTGUN_INTERVAL * (z.phase === "stage2" ? 0.6 : 1);
+        z.shotgunTimer = BOSS2_SHOTGUN_INTERVAL * intervalMultiplier;
       }
-      speed = z.speed || ZOMBIE_BASE_SPEED;
+      speed = z.speed || BOSS2_SPEED;
     } else if (z.kind === "boss3") {
       z.machinegunTimer = (z.machinegunTimer ?? BOSS3_MACHINEGUN_INTERVAL) - dt;
       z.radialTimer = (z.radialTimer ?? BOSS3_RADIAL_INTERVAL) - dt;
@@ -1112,6 +1157,7 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
           life: 1.2,
           speed: ENEMY_BULLET_SPEED * 1.35,
           damageInstant: 28,
+          color: "#a3ff3f",
         });
         z.machinegunBurstLeft -= 1;
         z.machinegunBurstCooldown = BOSS3_MACHINEGUN_RATE;
@@ -1127,6 +1173,7 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
             life: 1.6,
             speed: ENEMY_BULLET_SPEED * 0.9,
             damageInstant: 26,
+            color: "#a3ff3f",
           });
         }
         z.radialTimer = BOSS3_RADIAL_INTERVAL;
@@ -1158,7 +1205,7 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
       }
       if (touchingWall) {
         if (!z.breaking || z.breaking.wall !== touchingWall) {
-          z.breaking = { wall: touchingWall, timer: 3 };
+          z.breaking = { wall: touchingWall, timer: BOSS3_WALL_BREAK_TIME };
         } else {
           z.breaking.timer -= dt;
           if (z.breaking.timer <= 0) {
@@ -1327,6 +1374,9 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
     }
     z.x = zx;
     z.y = zy;
+    if (isBoss && !z.intangible) {
+      resolveBossWallOverlap(z, state.walls);
+    }
     if (Math.abs(z.x - prevX) > 0.1) {
       z.facingDir = z.x - prevX < 0 ? "right" : "left";
     }
@@ -1340,10 +1390,16 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
     else if (z.kind === "small") damage = 16;
     else if (z.kind === "bomber") damage = 30;
     else if (z.kind === "boss" || z.kind === "boss1") damage = BOSS1_MELEE_DAMAGE;
-    else if (z.kind === "boss2") damage = BOSS2_MELEE_DAMAGE;
+    else if (z.kind === "boss2")
+      damage =
+        z.phase === "stage2"
+          ? BOSS2_MELEE_DAMAGE * BOSS2_ENRAGED_MELEE_MULT
+          : BOSS2_MELEE_DAMAGE;
     else if (z.kind === "boss3") damage = BOSS3_MELEE_DAMAGE;
 
     const applyContact = (entity, type) => {
+      if (!entity) return;
+      if (isBoss && type !== "player") return;
       const range = z.kind && z.kind.startsWith("boss") ? BOSS_CONTACT_RANGE : z.r + entity.r + 2;
       if (dist2(entity.x, entity.y, z.x, z.y) < range * range) {
         if (type === "player" && (p.invulnerableTime ?? 0) > 0) return;
@@ -1461,21 +1517,75 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
     }
   }
 
-  // мины
-  if (state.mines.length) {
-    const keep = [];
-    for (const m of state.mines) {
-      if (m.state === "arming") {
-        m.timer -= dt;
-        if (m.timer <= 0) m.state = "armed";
-        keep.push(m);
-        continue;
-      }
-      if (m.state === "countdown") {
-        m.timer -= dt;
-        if (m.timer <= 0) {
+    // мины
+    if (state.mines.length) {
+      const keep = [];
+      for (const m of state.mines) {
+        if (m.state === "arming") {
+          m.timer -= dt;
+          if (m.timer <= 0) m.state = "armed";
+          keep.push(m);
+          continue;
+        }
+        if (m.state === "countdown") {
+          m.timer -= dt;
+          if (m.timer <= 0) {
+            state.explosions.push({ x: m.x, y: m.y, r: 0, life: 0.35 });
+            state.zombies.forEach((z) => {
+              if (z.kind && z.kind.startsWith("boss")) return;
+              if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
+            });
+            state.whites.forEach((w) => {
+              if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
+            });
+            state.villagers.forEach((villager) => {
+              if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
+                villagersToConvert.add(villager);
+            });
+            state.cats.forEach((cat) => {
+              if (dist2(m.x, m.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) cat.hp = 0;
+            });
+            if (
+              dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 &&
+              (p.invulnerableTime ?? 0) <= 0
+            ) {
+              p.hp = 0;
+              onDeath && onDeath();
+            }
+            playAudio(audio, SOUND_KEYS.MINE_EXPLODE);
+            continue;
+          }
+          keep.push(m);
+          continue;
+        }
+        if (m.state !== "armed") {
+          keep.push(m);
+          continue;
+        }
+
+        let exploded = false;
+        for (const z of state.zombies) {
+          if (dist2(m.x, m.y, z.x, z.y) < (m.r + z.r) ** 2) {
+            exploded = true;
+            break;
+          }
+        }
+        if (!exploded) {
+          for (const w of state.whites) {
+            if (dist2(m.x, m.y, w.x, w.y) < (m.r + w.r) ** 2) {
+              exploded = true;
+              break;
+            }
+          }
+        }
+        if (!exploded && (p.invulnerableTime ?? 0) <= 0 && dist2(m.x, m.y, p.x, p.y) < (m.r + p.r) ** 2) {
+          exploded = true;
+        }
+
+        if (exploded) {
           state.explosions.push({ x: m.x, y: m.y, r: 0, life: 0.35 });
           state.zombies.forEach((z) => {
+            if (z.kind && z.kind.startsWith("boss")) return;
             if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
           });
           state.whites.forEach((w) => {
@@ -1488,102 +1598,53 @@ export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audi
           state.cats.forEach((cat) => {
             if (dist2(m.x, m.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) cat.hp = 0;
           });
-          if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 && (p.invulnerableTime ?? 0) <= 0) {
+          if (
+            dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 &&
+            (p.invulnerableTime ?? 0) <= 0
+          ) {
             p.hp = 0;
             onDeath && onDeath();
           }
           playAudio(audio, SOUND_KEYS.MINE_EXPLODE);
-          continue;
-        }
-        keep.push(m);
-        continue;
-      }
-      if (m.state !== "armed") {
-        keep.push(m);
-        continue;
-      }
-
-      let exploded = false;
-      for (const z of state.zombies) {
-        if (dist2(m.x, m.y, z.x, z.y) < (m.r + z.r) ** 2) {
-          exploded = true;
-          break;
+        } else {
+          keep.push(m);
         }
       }
-      if (!exploded) {
-        for (const w of state.whites) {
-          if (dist2(m.x, m.y, w.x, w.y) < (m.r + w.r) ** 2) {
-            exploded = true;
-            break;
-          }
-        }
-      }
-      if (!exploded && (p.invulnerableTime ?? 0) <= 0 && dist2(m.x, m.y, p.x, p.y) < (m.r + p.r) ** 2) {
-        exploded = true;
-      }
-
-      if (exploded) {
-        state.explosions.push({ x: m.x, y: m.y, r: 0, life: 0.35 });
-        state.zombies.forEach((z) => {
-          if (dist2(m.x, m.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
-        });
-        state.whites.forEach((w) => {
-          if (dist2(m.x, m.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
-        });
-        state.villagers.forEach((villager) => {
-          if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
-            villagersToConvert.add(villager);
-        });
-         state.cats.forEach((cat) => {
-          if (dist2(m.x, m.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) cat.hp = 0;
-        });
-        if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 && (p.invulnerableTime ?? 0) <= 0) {
-          p.hp = 0;
-          onDeath && onDeath();
-        }
-        playAudio(audio, SOUND_KEYS.MINE_EXPLODE);
-      } else {
-        keep.push(m);
-      }
-        }
-  state.mines = keep;
-}
-
-if (state.bombs.length) {
-  const keepBombs = [];
-  for (const bomb of state.bombs) {
-    bomb.timer -= dt;
-    if (bomb.timer <= 0) {
-      state.explosions.push({ x: bomb.x, y: bomb.y, r: 0, life: 0.35 });
-      state.zombies.forEach((z) => {
-        if (dist2(bomb.x, bomb.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
-      });
-      state.whites.forEach((w) => {
-        if (dist2(bomb.x, bomb.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
-      });
-      state.villagers.forEach((villager) => {
-        if (dist2(bomb.x, bomb.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
-          villagersToConvert.add(villager);
-      });
-      state.cats.forEach((cat) => {
-        if (dist2(bomb.x, bomb.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) {
-          cat.hp = 0;
-          catsToCull.add(cat);
-        }
-      });
-      if (dist2(bomb.x, bomb.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 && (p.invulnerableTime ?? 0) <= 0) {
-        p.hp = 0;
-        onDeath && onDeath();
-      }
-      playAudio(audio, SOUND_KEYS.MINE_EXPLODE);
-    } else {
-      keepBombs.push(bomb);
+      state.mines = keep;
     }
-  }
-state.bombs = keepBombs;
-}
 
-if (state.grenades.length) {
+    if (state.bombs.length) {
+      const keepBombs = [];
+      for (const bomb of state.bombs) {
+        bomb.timer -= dt;
+        if (bomb.timer <= 0) {
+          state.explosions.push({ x: bomb.x, y: bomb.y, r: 0, life: 0.35 });
+          state.villagers.forEach((villager) => {
+            if (dist2(bomb.x, bomb.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
+              villagersToConvert.add(villager);
+          });
+          state.cats.forEach((cat) => {
+            if (dist2(bomb.x, bomb.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) {
+              cat.hp = 0;
+              catsToCull.add(cat);
+            }
+          });
+          if (
+            dist2(bomb.x, bomb.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 &&
+            (p.invulnerableTime ?? 0) <= 0
+          ) {
+            p.hp = 0;
+            onDeath && onDeath();
+          }
+          playAudio(audio, SOUND_KEYS.MINE_EXPLODE);
+        } else {
+          keepBombs.push(bomb);
+        }
+      }
+      state.bombs = keepBombs;
+    }
+
+    if (state.grenades.length) {
   const keepGrenades = [];
   for (const g of state.grenades) {
     g.timer -= dt;
@@ -1606,13 +1667,9 @@ if (state.grenades.length) {
       state.explosions.push({ x: g.x, y: g.y, r: 0, life: 0.25 });
       const radius2 = (g.radius ?? GRENADE_EXPLOSION_RADIUS) ** 2;
       state.zombies.forEach((z) => {
+        if (z.kind && z.kind.startsWith("boss")) return;
         if (dist2(g.x, g.y, z.x, z.y) < radius2) {
-          if (z.kind && z.kind.startsWith("boss")) {
-            const bossDamage = z.kind === "boss3" ? 160 : 120;
-            z.hp -= bossDamage;
-          } else {
-            z.hp = 0;
-          }
+          z.hp = 0;
         }
       });
       state.whites.forEach((w) => {
@@ -1748,6 +1805,7 @@ if (state.grenades.length) {
           bossFlow.stopSpawns = false;
           bossFlow.lastBossKind = "boss1";
         } else if (z.kind === "boss2") {
+          if (state.progress) state.progress.boss2Defeated = true;
           bossFlow.pendingBoss2 = null;
           bossFlow.spawnRateMultiplier = 1;
           bossFlow.stopSpawns = true;
