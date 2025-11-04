@@ -75,7 +75,7 @@ export const SOUND_MANIFEST = {
   [SOUND_KEYS.PLAYER_HIT]: null,
   [SOUND_KEYS.ENEMY_HIT]: null,
   [SOUND_KEYS.ENEMY_DIE]: null,
-  [SOUND_KEYS.PICKUP]: nulle,
+  [SOUND_KEYS.PICKUP]: null,
   [SOUND_KEYS.MEDKIT]: null,
   [SOUND_KEYS.MINE_EXPLODE]: null,
   [SOUND_KEYS.LEVEL_UP]: null,
