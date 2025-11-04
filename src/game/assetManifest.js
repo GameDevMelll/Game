@@ -3,6 +3,16 @@ import { TEXTURE_KEYS, SOUND_KEYS } from "./assetKeys.js";
 import zombiePng from "../assets/textures/zom-removebg-preview.png"; // твой спрайт
 import GhostPng from "../assets/textures/Ghost-removebg-preview.png";
 import RangedPng from "../assets/textures/Ranged-removebg-preview.png";
+import axePng from "../assets/textures/axe.png";
+import bombPng from "../assets/textures/bomb.png";
+import catPng from "../assets/textures/cat.png";
+import grenadePng from "../assets/textures/grenade.png";
+import machinegunPng from "../assets/textures/machinegun.png";
+import mineIdlePng from "../assets/textures/mine_idle.png";
+import mineArmedPng from "../assets/textures/mine_armed.png";
+import pitchforkPng from "../assets/textures/pitchfork.png";
+import shieldPng from "../assets/textures/shield.png";
+import medkitIconPng from "../assets/textures/medkit_icon.png";
 
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: null,
@@ -20,13 +30,20 @@ export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.PROJECTILE_ENEMY]: null,
   [TEXTURE_KEYS.SLASH]: null,
   [TEXTURE_KEYS.EXPLOSION]: null,
-  [TEXTURE_KEYS.MEDKIT]: null,
+  [TEXTURE_KEYS.MEDKIT]: medkitIconPng,
   [TEXTURE_KEYS.AMMO]: null,
-  [TEXTURE_KEYS.MINE]: null,
+  [TEXTURE_KEYS.MINE_IDLE]: mineIdlePng,
+  [TEXTURE_KEYS.MINE_ARMED]: mineArmedPng,
+  [TEXTURE_KEYS.BOMB]: bombPng,
   [TEXTURE_KEYS.SHOTGUN]: null,
   [TEXTURE_KEYS.GLAIVE]: null,
   [TEXTURE_KEYS.PISTOL]: null,
   [TEXTURE_KEYS.BAT]: null,
+  [TEXTURE_KEYS.MACHINEGUN]: machinegunPng,
+  [TEXTURE_KEYS.PITCHFORK]: pitchforkPng,
+  [TEXTURE_KEYS.GRENADE]: grenadePng,
+  [TEXTURE_KEYS.SHIELD]: shieldPng,
+  [TEXTURE_KEYS.CAT]: catPng,
 };
 
 export const SOUND_MANIFEST = {
