@@ -38,7 +38,7 @@ export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.MINE_ARMED]: mineArmedPng,
   [TEXTURE_KEYS.BOMB]: bombPng,
   [TEXTURE_KEYS.SHOTGUN]: null,
-  [TEXTURE_KEYS.GLAIVE]: null,
+  [TEXTURE_KEYS.GLAIVE]: pitchforkPng,
   [TEXTURE_KEYS.PISTOL]: null,
   [TEXTURE_KEYS.BAT]: null,
   [TEXTURE_KEYS.MACHINEGUN]: machinegunPng,
