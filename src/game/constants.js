@@ -66,7 +66,7 @@ export const XP_LEVEL_BASE = 110;
 export const INITIAL_VILLAGERS = 6;
 export const VILLAGER_SPAWN_EVERY = 30;
 export const VILLAGER_SPEED = 150;
-export const VILLAGER_MEDKIT_DROP_INTERVAL = 15;
+export const VILLAGER_MEDKIT_DROP_INTERVAL = 15000;
 
 // кошки
 export const CAT_SPAWN_FACTOR = 6;
