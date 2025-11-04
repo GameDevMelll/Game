@@ -27,9 +27,27 @@ import {
   VILLAGER_SPAWN_EVERY,
   VILLAGER_SPEED,
   BOMBER_COUNTDOWN,
-  BOSS_SPAWN_AT,
-  BOSS_ATTACK_RANGE,
-  BOSS_ATTACK_DAMAGE,
+  BOSS1_SPAWN_AT,
+  BOSS1_MELEE_DAMAGE,
+  BOSS2_SPAWN_DELAY,
+  BOSS2_MELEE_DAMAGE,
+  BOSS2_SHOTGUN_INTERVAL,
+  BOSS2_SHOTGUN_PELLETS,
+  BOSS2_SHOTGUN_SPREAD,
+  BOSS2_PHASE_THRESHOLD,
+  BOSS2_SHOTGUN_RANGE,
+  BOSS2_SPAWN_RATE_MULTIPLIER,
+  BOSS3_VILLAGER_WAVE,
+  BOSS3_SPAWN_DELAY_AFTER_RESCUE,
+  BOSS3_MELEE_DAMAGE,
+  BOSS3_MACHINEGUN_INTERVAL,
+  BOSS3_MACHINEGUN_BURST,
+  BOSS3_MACHINEGUN_RATE,
+  BOSS3_RADIAL_INTERVAL,
+  BOSS3_GRENADE_INTERVAL,
+  BOSS3_REGEN_DELAY,
+  BOSS3_REGEN_RATE,
+  BOSS_CONTACT_RANGE,
   ZOMBIE_BASE_SPEED,
   INVENTORY_SLOTS,
   PLAYER_INVULN_DURATION,
@@ -39,6 +57,9 @@ import {
   CAT_SPAWN_FACTOR,
   CAT_SPEED,
   CAT_MAX_HP,
+  CAT_MAX_COUNT,
+  MEDKIT_BASE_INTERVAL,
+  MEDKIT_MIN_INTERVAL,
 } from "./constants.js";
 import { SOUND_KEYS } from "./assetKeys.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
@@ -287,7 +308,24 @@ export function createInitialState(makeWalls, makePlayer, assets = null) {
     kills: 0,
     dayTime: 0,
     time: 0,
-    bossSpawned: false,
+    bossFlow: {
+      stage: 0,
+      spawnRateMultiplier: 1,
+      stopSpawns: false,
+      pendingBoss2: null,
+      pendingBoss3: null,
+      waitingForClear: false,
+      villagersWaveSpawned: false,
+      boss2PhaseTriggered: false,
+      victoryPending: false,
+      victoryAnnounced: false,
+      lastBossKind: null,
+      rescueSoundTimer: null,
+    },
+    medkitSpawn: {
+      timer: MEDKIT_BASE_INTERVAL,
+      base: MEDKIT_BASE_INTERVAL,
+    },
     assets: assets || { textures: {}, sounds: {} },
   };
 
@@ -478,22 +516,19 @@ export function attack(state, queueFlash, audio) {
   }
 
   if (current === "machinegun") {
-    const ammoCost = 3;
+    const ammoCost = 1;
     if (p.ammo >= ammoCost) {
-      const burst = 5;
-      for (let i = 0; i < burst; i++) {
-        const spread = rand(-0.28, 0.28);
-        state.bullets.push(
-          makeBullet(p.x, p.y, p.facing + spread, {
-            damage: 16,
-            speed: BULLET_SPEED * 0.95,
-            life: 0.4,
-            radius: 3,
-          })
-        );
-      }
+      const recoil = rand(-0.04, 0.04);
+      state.bullets.push(
+        makeBullet(p.x, p.y, p.facing + recoil, {
+          damage: 18,
+          speed: BULLET_SPEED * 1.05,
+          life: 0.9,
+          radius: 3,
+        })
+      );
       p.ammo -= ammoCost;
-      p.attackCD = 0.09;
+      p.attackCD = 0.06;
       playAudio(audio, SOUND_KEYS.PLAYER_ATTACK);
     } else {
       queueFlash && queueFlash("Нужно больше патронов");
@@ -617,7 +652,7 @@ export function tryPickup(state, queueFlash, audio) {
   }
 }
 
-export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
+export function update(state, dt, { canvas, onDeath, onVictory, queueFlash, audio }) {
   const p = state.player;
   ensurePlayerInventory(p);
   if (!Array.isArray(state.cats)) state.cats = [];
@@ -629,6 +664,25 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       interval: VILLAGER_SPAWN_EVERY * CAT_SPAWN_FACTOR,
     };
   }
+  if (!state.medkitSpawn) {
+    state.medkitSpawn = { timer: MEDKIT_BASE_INTERVAL, base: MEDKIT_BASE_INTERVAL };
+  }
+  if (!state.bossFlow) {
+    state.bossFlow = {
+      stage: 0,
+      spawnRateMultiplier: 1,
+      stopSpawns: false,
+      pendingBoss2: null,
+      pendingBoss3: null,
+      waitingForClear: false,
+      villagersWaveSpawned: false,
+      boss2PhaseTriggered: false,
+      victoryPending: false,
+      victoryAnnounced: false,
+      lastBossKind: null,
+      rescueSoundTimer: null,
+    };
+  }
   if (!p.maxHp) p.maxHp = PLAYER_MAX_HP;
   p.maxHp = Math.max(p.maxHp, PLAYER_MAX_HP);
   p.hp = clamp(p.hp, 0, p.maxHp);
@@ -637,6 +691,11 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   if (state.dayTime >= DAY_NIGHT_CYCLE) state.dayTime -= DAY_NIGHT_CYCLE;
 
   const rareFactor = clamp(state.time / 240, 0, 1);
+
+  const bossFlow = state.bossFlow;
+  bossFlow.spawnRateMultiplier = Math.max(0.1, bossFlow.spawnRateMultiplier ?? 1);
+  const spawnRateMultiplier = clamp(bossFlow.spawnRateMultiplier, 0.1, 6);
+  const spawnStopped = !!bossFlow.stopSpawns;
 
   p.invulnerableTime = Math.max(0, (p.invulnerableTime ?? 0) - dt);
   if (!p.facingDir) p.facingDir = "right";
@@ -734,39 +793,48 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   // спавн зомби
   state.spawn.min = Math.max(0.2, 0.65 - state.time / 210);
   state.spawn.timer -= dt;
-  if (state.spawn.timer <= 0 && state.zombies.length < ZOMBIE_MAX_ON_FIELD) {
-    state.spawn.interval = Math.max(
+  const canSpawnZombies = !spawnStopped && state.zombies.length < ZOMBIE_MAX_ON_FIELD;
+  if (canSpawnZombies && state.spawn.timer <= 0) {
+    const baseInterval = Math.max(
       state.spawn.min,
       state.spawn.interval * (0.955 - rareFactor * 0.06)
     );
-    state.spawn.timer = state.spawn.interval * rand(0.45, 1.05);
+    state.spawn.interval = baseInterval;
+    const adjustedInterval = baseInterval / spawnRateMultiplier;
+    state.spawn.timer = adjustedInterval * rand(0.45, 1.05);
     const spot = getFreeSpawnNear(p.x, p.y, state.walls);
     const kind = pickZombieKindForSpawn(rareFactor);
     state.zombies.push(makeZombie(spot.x, spot.y, kind));
+    playAudio(audio, SOUND_KEYS.MONSTER_SPAWN);
   }
 
-  if (!state.bossSpawned && state.time >= BOSS_SPAWN_AT) {
+  if (bossFlow.stage === 0 && state.time >= BOSS1_SPAWN_AT) {
     const centerX = WORLD.w / 2;
     const centerY = WORLD.h / 2;
-    state.zombies.push(makeBoss(centerX, centerY));
-    state.bossSpawned = true;
+    state.zombies.push(makeBoss(centerX, centerY, 1));
+    bossFlow.stage = 1;
+    bossFlow.lastBossKind = "boss1";
     queueFlash && queueFlash("Орк-босс ворвался в бой!");
+    playAudio(audio, SOUND_KEYS.MONSTER_SPAWN);
   }
 
   // спавн стрелков
   if (state.time >= WHITE_START_AT) {
     state.whiteSpawn.min = Math.max(0.45, WHITE_SPAWN_MIN - state.time / 260);
     state.whiteSpawn.timer -= dt;
-    if (state.whiteSpawn.timer <= 0) {
-      state.whiteSpawn.interval = Math.max(
+    if (!spawnStopped && state.whiteSpawn.timer <= 0) {
+      const baseInterval = Math.max(
         state.whiteSpawn.min,
         state.whiteSpawn.interval * (0.965 - rareFactor * 0.05)
       );
-      state.whiteSpawn.timer = state.whiteSpawn.interval * rand(0.6, 1.1);
+      state.whiteSpawn.interval = baseInterval;
+      const adjustedInterval = baseInterval / spawnRateMultiplier;
+      state.whiteSpawn.timer = adjustedInterval * rand(0.6, 1.1);
       const spot = getFreeSpawnNear(p.x, p.y, state.walls);
       const witchChance = Math.min(0.08, 0.02 + state.time / 2400);
       const type = Math.random() < witchChance ? "witch" : "white";
       state.whites.push(makeWhite(spot.x, spot.y, type));
+      playAudio(audio, SOUND_KEYS.MONSTER_SPAWN);
     }
   }
 
@@ -779,11 +847,53 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   }
 
   state.catSpawn.timer -= dt;
-  if (state.catSpawn.timer <= 0 && state.cats.length < 3) {
+  if (state.catSpawn.timer <= 0 && state.cats.length < CAT_MAX_COUNT) {
     const spot = getFreeSpawnNear(p.x, p.y, state.walls, 18);
     state.cats.push(makeCat(spot.x, spot.y));
     state.catSpawn.timer = state.catSpawn.interval * rand(0.8, 1.2);
     queueFlash && queueFlash("Пушистый друг присоединился!");
+  }
+
+  const bossAlive = state.zombies.some((z) => z.kind && z.kind.startsWith("boss"));
+  if (!bossAlive && bossFlow.pendingBoss2 != null) {
+    bossFlow.pendingBoss2 -= dt;
+    if (bossFlow.pendingBoss2 <= 0) {
+      const centerX = WORLD.w / 2;
+      const centerY = WORLD.h / 2;
+      state.zombies.push(makeBoss(centerX, centerY, 2));
+      bossFlow.stage = Math.max(bossFlow.stage, 2);
+      bossFlow.lastBossKind = "boss2";
+      bossFlow.pendingBoss2 = null;
+      bossFlow.spawnRateMultiplier = BOSS2_SPAWN_RATE_MULTIPLIER;
+      bossFlow.stopSpawns = false;
+      bossFlow.boss2PhaseTriggered = false;
+      queueFlash && queueFlash("Босс №2 явился! Подготовься!");
+      playAudio(audio, SOUND_KEYS.MONSTER_SPAWN);
+    }
+  }
+
+  if (bossFlow.villagersWaveSpawned && bossFlow.rescueSoundTimer != null) {
+    bossFlow.rescueSoundTimer -= dt;
+    if (bossFlow.rescueSoundTimer <= 0) {
+      bossFlow.pendingBoss3 = 0;
+      bossFlow.rescueSoundTimer = null;
+    }
+  }
+
+  if (!bossAlive && bossFlow.pendingBoss3 != null) {
+    bossFlow.pendingBoss3 -= dt;
+    if (bossFlow.pendingBoss3 <= 0) {
+      const centerX = WORLD.w / 2;
+      const centerY = WORLD.h / 2;
+      state.zombies.push(makeBoss(centerX, centerY, 3));
+      bossFlow.stage = Math.max(bossFlow.stage, 3);
+      bossFlow.lastBossKind = "boss3";
+      bossFlow.pendingBoss3 = null;
+      bossFlow.stopSpawns = true;
+      bossFlow.spawnRateMultiplier = 1;
+      queueFlash && queueFlash("Финальный Босс прибыл!");
+      playAudio(audio, SOUND_KEYS.BOSS3_SPAWN);
+    }
   }
 
   // движение жителей
@@ -840,13 +950,24 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
 
     v.hp = clamp(v.hp, 0, v.maxHp);
     if (Math.abs(v.x - prevVX) > 0.1) {
-      v.facingDir = v.x - prevVX < 0 ? "left" : "right";
+      v.facingDir = v.x - prevVX < 0 ? "right" : "left";
     }
-    v.medkitTimer = (v.medkitTimer ?? VILLAGER_MEDKIT_DROP_INTERVAL) - dt;
-    if (v.medkitTimer <= 0) {
-      state.items.push(makeItem(v.x + rand(-16, 16), v.y + rand(-16, 16), "medkit"));
-      v.medkitTimer = VILLAGER_MEDKIT_DROP_INTERVAL;
-    }
+  }
+
+  const medkitCtrl = state.medkitSpawn;
+  const villagersAlive = state.villagers.length;
+  const medkitIntervalBase = medkitCtrl.base ?? MEDKIT_BASE_INTERVAL;
+  const intervalDivider = Math.max(1, villagersAlive * 0.55 + 0.45);
+  const targetInterval = Math.max(MEDKIT_MIN_INTERVAL, medkitIntervalBase / intervalDivider);
+  medkitCtrl.timer -= dt;
+  if (villagersAlive > 0 && medkitCtrl.timer <= 0) {
+    const pick = state.villagers[Math.floor(Math.random() * villagersAlive)];
+    const dropX = clamp(pick.x + rand(-32, 32), WALL_THICKNESS + 20, WORLD.w - WALL_THICKNESS - 20);
+    const dropY = clamp(pick.y + rand(-32, 32), WALL_THICKNESS + 20, WORLD.h - WALL_THICKNESS - 20);
+    state.items.push(makeItem(dropX, dropY, "medkit"));
+    medkitCtrl.timer = targetInterval * rand(0.7, 1.25);
+  } else if (villagersAlive === 0) {
+    medkitCtrl.timer = Math.min(medkitCtrl.timer, targetInterval);
   }
 
   // кошки следуют за игроком
@@ -875,11 +996,11 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       }
     }
     if (Math.abs(cat.x - prevX) > 0.05) {
-      cat.facingDir = cat.x - prevX < 0 ? "left" : "right";
+      cat.facingDir = cat.x - prevX < 0 ? "right" : "left";
     } else if (Math.cos(p.facing) < 0) {
-      cat.facingDir = "left";
-    } else {
       cat.facingDir = "right";
+    } else {
+      cat.facingDir = "left";
     }
   }
 
@@ -917,11 +1038,139 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       }
     }
 
+    if (z.kind === "boss3" && state.villagers.length) {
+      let bestVillager = null;
+      let villDist2 = Infinity;
+      for (const villager of state.villagers) {
+        const d = dist2(z.x, z.y, villager.x, villager.y);
+        if (d < villDist2) {
+          villDist2 = d;
+          bestVillager = villager;
+        }
+      }
+      if (
+        bestVillager &&
+        (villDist2 < bestDist2 * 1.2 || villDist2 < 380 * 380)
+      ) {
+        bestDist2 = villDist2;
+        target = bestVillager;
+        targetType = "villager";
+      }
+    }
+
     const distToTarget = Math.sqrt(bestDist2);
     let moveAng = angleBetween(z.x, z.y, target.x, target.y);
     let speed = z.speed || ZOMBIE_BASE_SPEED;
 
     if (!z.state) z.state = "idle";
+
+    if (z.kind === "boss2") {
+      z.shotgunTimer = (z.shotgunTimer ?? BOSS2_SHOTGUN_INTERVAL) - dt;
+      const hpRatio = clamp(z.hp / (z.maxHp || 1), 0, 1);
+      if (hpRatio <= BOSS2_PHASE_THRESHOLD && z.phase !== "stage2") {
+        z.phase = "stage2";
+        bossFlow.boss2PhaseTriggered = true;
+        queueFlash && queueFlash("Босс №2 яростен!");
+        playAudio(audio, SOUND_KEYS.BOSS2_PHASE);
+      }
+      if (
+        z.shotgunTimer <= 0 &&
+        dist2(z.x, z.y, p.x, p.y) < BOSS2_SHOTGUN_RANGE * BOSS2_SHOTGUN_RANGE
+      ) {
+        const pellets = BOSS2_SHOTGUN_PELLETS;
+        const baseAng = angleBetween(z.x, z.y, p.x, p.y);
+        for (let i = 0; i < pellets; i++) {
+          const spread = rand(-BOSS2_SHOTGUN_SPREAD, BOSS2_SHOTGUN_SPREAD);
+          state.enemyBullets.push({
+            x: z.x,
+            y: z.y,
+            ang: baseAng + spread,
+            life: 1.4,
+            speed: ENEMY_BULLET_SPEED * 1.1,
+            damageInstant: z.phase === "stage2" ? 42 : 32,
+          });
+        }
+        z.shotgunTimer = BOSS2_SHOTGUN_INTERVAL * (z.phase === "stage2" ? 0.6 : 1);
+      }
+      speed = z.speed || ZOMBIE_BASE_SPEED;
+    } else if (z.kind === "boss3") {
+      z.machinegunTimer = (z.machinegunTimer ?? BOSS3_MACHINEGUN_INTERVAL) - dt;
+      z.radialTimer = (z.radialTimer ?? BOSS3_RADIAL_INTERVAL) - dt;
+      z.grenadeTimer = (z.grenadeTimer ?? BOSS3_GRENADE_INTERVAL) - dt;
+      z.machinegunBurstCooldown = (z.machinegunBurstCooldown ?? 0) - dt;
+      if (z.machinegunTimer <= 0) {
+        z.machinegunBurstLeft = BOSS3_MACHINEGUN_BURST;
+        z.machinegunBurstCooldown = 0;
+        z.machinegunTimer = BOSS3_MACHINEGUN_INTERVAL;
+      }
+      if ((z.machinegunBurstLeft ?? 0) > 0 && z.machinegunBurstCooldown <= 0) {
+        const ang = angleBetween(z.x, z.y, p.x, p.y);
+        state.enemyBullets.push({
+          x: z.x + Math.cos(ang) * (z.r * 0.6),
+          y: z.y + Math.sin(ang) * (z.r * 0.6),
+          ang,
+          life: 1.2,
+          speed: ENEMY_BULLET_SPEED * 1.35,
+          damageInstant: 28,
+        });
+        z.machinegunBurstLeft -= 1;
+        z.machinegunBurstCooldown = BOSS3_MACHINEGUN_RATE;
+      }
+      if (z.radialTimer <= 0) {
+        const rays = 12;
+        for (let i = 0; i < rays; i++) {
+          const ang = (Math.PI * 2 * i) / rays;
+          state.enemyBullets.push({
+            x: z.x,
+            y: z.y,
+            ang,
+            life: 1.6,
+            speed: ENEMY_BULLET_SPEED * 0.9,
+            damageInstant: 26,
+          });
+        }
+        z.radialTimer = BOSS3_RADIAL_INTERVAL;
+      }
+      if (z.grenadeTimer <= 0) {
+        const ang = angleBetween(z.x, z.y, p.x, p.y);
+        const throwSpeed = GRENADE_THROW_SPEED * 0.9;
+        state.grenades.push({
+          x: z.x,
+          y: z.y,
+          vx: Math.cos(ang) * throwSpeed,
+          vy: Math.sin(ang) * throwSpeed,
+          timer: GRENADE_FUSE + 0.6,
+          radius: GRENADE_EXPLOSION_RADIUS * 1.2,
+          owner: "boss3",
+        });
+        z.grenadeTimer = BOSS3_GRENADE_INTERVAL;
+      }
+      const sinceDamage = state.time - (z.lastDamageTime ?? state.time);
+      if (sinceDamage > BOSS3_REGEN_DELAY && z.hp < (z.maxHp ?? z.hp)) {
+        z.hp = Math.min(z.maxHp ?? z.hp, z.hp + BOSS3_REGEN_RATE * dt);
+      }
+      let touchingWall = null;
+      for (const wall of state.walls) {
+        if (circleRectCollides(z.x, z.y, z.r + 2, wall)) {
+          touchingWall = wall;
+          break;
+        }
+      }
+      if (touchingWall) {
+        if (!z.breaking || z.breaking.wall !== touchingWall) {
+          z.breaking = { wall: touchingWall, timer: 3 };
+        } else {
+          z.breaking.timer -= dt;
+          if (z.breaking.timer <= 0) {
+            state.walls = state.walls.filter((w) => w !== touchingWall);
+            z.breaking = null;
+            playAudio(audio, SOUND_KEYS.WALL_BREAK);
+          }
+        }
+      } else if (z.breaking) {
+        z.breaking = null;
+      }
+    }
 
     if (z.behavior === "charge") {
       z.chargeCD = (z.chargeCD ?? 2.5) - dt;
@@ -1079,7 +1328,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     z.x = zx;
     z.y = zy;
     if (Math.abs(z.x - prevX) > 0.1) {
-      z.facingDir = z.x - prevX < 0 ? "left" : "right";
+      z.facingDir = z.x - prevX < 0 ? "right" : "left";
     }
 
     let damage = 20;
@@ -1090,10 +1339,12 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     else if (z.kind === "fat") damage = 22;
     else if (z.kind === "small") damage = 16;
     else if (z.kind === "bomber") damage = 30;
-    else if (z.kind === "boss") damage = BOSS_ATTACK_DAMAGE * 2.2;
+    else if (z.kind === "boss" || z.kind === "boss1") damage = BOSS1_MELEE_DAMAGE;
+    else if (z.kind === "boss2") damage = BOSS2_MELEE_DAMAGE;
+    else if (z.kind === "boss3") damage = BOSS3_MELEE_DAMAGE;
 
     const applyContact = (entity, type) => {
-      const range = z.kind === "boss" ? BOSS_ATTACK_RANGE : z.r + entity.r + 2;
+      const range = z.kind && z.kind.startsWith("boss") ? BOSS_CONTACT_RANGE : z.r + entity.r + 2;
       if (dist2(entity.x, entity.y, z.x, z.y) < range * range) {
         if (type === "player" && (p.invulnerableTime ?? 0) > 0) return;
         entity.hp -= damage * dt;
@@ -1124,6 +1375,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
         z.hp -= b.damage ?? 24;
         b.life = 0;
         playAudio(audio, SOUND_KEYS.ENEMY_HIT);
+        if (z.kind === "boss3") z.lastDamageTime = state.time;
       }
     }
   }
@@ -1161,11 +1413,11 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     }
 
     if (Math.abs(w.x - prevWX) > 0.05) {
-      w.facingDir = w.x - prevWX < 0 ? "left" : "right";
+      w.facingDir = w.x - prevWX < 0 ? "right" : "left";
     } else if (Math.cos(angToP) < 0) {
-      w.facingDir = "left";
-    } else {
       w.facingDir = "right";
+    } else {
+      w.facingDir = "left";
     }
     
     for (const b of state.bullets) {
@@ -1355,8 +1607,12 @@ if (state.grenades.length) {
       const radius2 = (g.radius ?? GRENADE_EXPLOSION_RADIUS) ** 2;
       state.zombies.forEach((z) => {
         if (dist2(g.x, g.y, z.x, z.y) < radius2) {
-          if (z.kind === "boss") z.hp -= 120;
-          else z.hp = 0;
+          if (z.kind && z.kind.startsWith("boss")) {
+            const bossDamage = z.kind === "boss3" ? 160 : 120;
+            z.hp -= bossDamage;
+          } else {
+            z.hp = 0;
+          }
         }
       });
       state.whites.forEach((w) => {
@@ -1408,8 +1664,9 @@ if (state.grenades.length) {
 
   // вражеские пули
   for (const eb of state.enemyBullets) {
-    eb.x += Math.cos(eb.ang) * ENEMY_BULLET_SPEED * dt;
-    eb.y += Math.sin(eb.ang) * ENEMY_BULLET_SPEED * dt;
+    const bulletSpeed = eb.speed ?? ENEMY_BULLET_SPEED;
+    eb.x += Math.cos(eb.ang) * bulletSpeed * dt;
+    eb.y += Math.sin(eb.ang) * bulletSpeed * dt;
     eb.life -= dt;
     for (const w of state.walls) {
       if (circleRectCollides(eb.x, eb.y, 4, w)) {
@@ -1418,8 +1675,9 @@ if (state.grenades.length) {
       }
     }
     if (eb.life > 0 && dist2(eb.x, eb.y, p.x, p.y) < (p.r + 3) ** 2) {
-     if ((p.invulnerableTime ?? 0) <= 0) {
-        p.hp -= 36 * dt * 3;
+      if ((p.invulnerableTime ?? 0) <= 0) {
+        if (eb.damageInstant != null) p.hp -= eb.damageInstant;
+        else p.hp -= 36 * dt * 3;
         if (p.hp <= 0) {
           p.hp = 0;
           onDeath && onDeath();
@@ -1430,7 +1688,7 @@ if (state.grenades.length) {
     if (eb.life > 0) {
       for (const villager of state.villagers) {
         if (dist2(eb.x, eb.y, villager.x, villager.y) < (villager.r + 3) ** 2) {
-          villager.hp -= 32;
+          villager.hp -= eb.damageInstant != null ? eb.damageInstant : 32;
           eb.life = 0;
           if (villager.hp <= 0) villagersToConvert.add(villager);
           break;
@@ -1440,7 +1698,8 @@ if (state.grenades.length) {
     if (eb.life > 0) {
       for (const cat of state.cats) {
         if (dist2(eb.x, eb.y, cat.x, cat.y) < (cat.r + 3) ** 2) {
-          cat.hp = (cat.hp ?? CAT_MAX_HP) - 32;
+          const damage = eb.damageInstant != null ? eb.damageInstant : 32;
+          cat.hp = (cat.hp ?? CAT_MAX_HP) - damage;
           if (cat.hp <= 0) catsToCull.add(cat);
           eb.life = 0;
           break;
@@ -1482,13 +1741,56 @@ if (state.grenades.length) {
       else if (drop < 0.41) state.items.push(makeItem(dropX, dropY, "grenade"));
       else if (drop < 0.45) state.items.push(makeItem(dropX, dropY, "shield"));
       playAudio(audio, SOUND_KEYS.ENEMY_DIE);
+      if (z.kind && z.kind.startsWith("boss")) {
+        if (z.kind === "boss" || z.kind === "boss1") {
+          bossFlow.pendingBoss2 = BOSS2_SPAWN_DELAY;
+          bossFlow.spawnRateMultiplier = 1;
+          bossFlow.stopSpawns = false;
+          bossFlow.lastBossKind = "boss1";
+        } else if (z.kind === "boss2") {
+          bossFlow.pendingBoss2 = null;
+          bossFlow.spawnRateMultiplier = 1;
+          bossFlow.stopSpawns = true;
+          bossFlow.waitingForClear = true;
+          bossFlow.villagersWaveSpawned = false;
+          bossFlow.pendingBoss3 = null;
+          bossFlow.rescueSoundTimer = null;
+          bossFlow.lastBossKind = "boss2";
+        } else if (z.kind === "boss3") {
+          bossFlow.pendingBoss3 = null;
+          bossFlow.stopSpawns = true;
+          bossFlow.victoryPending = true;
+          bossFlow.lastBossKind = "boss3";
+        }
+      }
       continue;
     }
-    if (z.kind !== "boss" && z.age >= ZOMBIE_MAX_AGE) continue;
+    if (!(z.kind && z.kind.startsWith("boss")) && z.age >= ZOMBIE_MAX_AGE) continue;
     newZ.push(z);
   }
   state.zombies = newZ;
   if (zombieKills > 0) state.kills += zombieKills;
+
+  if (bossFlow.waitingForClear && !bossFlow.villagersWaveSpawned) {
+    const hostilesRemaining = state.zombies.length + state.whites.length;
+    if (hostilesRemaining === 0) {
+      bossFlow.waitingForClear = false;
+      bossFlow.villagersWaveSpawned = true;
+      const cx = WORLD.w / 2;
+      const cy = WORLD.h / 2;
+      for (let i = 0; i < BOSS3_VILLAGER_WAVE; i++) {
+        const ang = (Math.PI * 2 * i) / BOSS3_VILLAGER_WAVE;
+        const dist = 140 + Math.random() * 120;
+        const vx = clamp(cx + Math.cos(ang) * dist, WALL_THICKNESS + 24, WORLD.w - WALL_THICKNESS - 24);
+        const vy = clamp(cy + Math.sin(ang) * dist, WALL_THICKNESS + 24, WORLD.h - WALL_THICKNESS - 24);
+        state.villagers.push(makeVillager(vx, vy));
+      }
+      bossFlow.rescueSoundTimer = BOSS3_SPAWN_DELAY_AFTER_RESCUE;
+      bossFlow.pendingBoss3 = null;
+      queueFlash && queueFlash("Жители спасены! Подготовься к финалу!");
+      playAudio(audio, SOUND_KEYS.RESCUE_SPAWN);
+    }
+  }
 
   const keepWhites = [];
   let rangedKills = 0;
@@ -1517,4 +1819,9 @@ if (state.grenades.length) {
 
   if (state.zombies.length > ZOMBIE_HARD_CAP) state.zombies.length = ZOMBIE_HARD_CAP;
   if (state.whites.length > WHITE_HARD_CAP) state.whites.length = WHITE_HARD_CAP;
+
+  if (bossFlow.victoryPending && !bossFlow.victoryAnnounced) {
+    bossFlow.victoryAnnounced = true;
+    onVictory && onVictory({ kills: state.kills, duration: state.time });
+  }
 }

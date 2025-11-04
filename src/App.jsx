@@ -25,10 +25,11 @@ export default function App() {
   const audioApiRef = useRef({ play: () => {} });
   const soundsLoadPromiseRef = useRef(null);
 
-  const [mode, setMode] = useState("start"); // start | play | pause | dead
+  const [mode, setMode] = useState("start"); // start | play | pause | dead | victory
   const [running, setRunning] = useState(false);
   const [flash, setFlash] = useState("");
   const [best, setBest] = useState(0);
+  const [victoryStats, setVictoryStats] = useState(null);
 
   // создаём стейт один раз
   if (!stateRef.current) {
@@ -50,10 +51,30 @@ export default function App() {
     setTimeout(() => setFlash(""), 1100);
   };
 
+  const formatDuration = (seconds) => {
+    const total = Math.max(0, Math.floor(seconds ?? 0));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
   const onDeath = () => {
     setRunning(false);
     setMode("dead");
     const kills = stateRef.current.kills || 0;
+    setBest((prev) => {
+      const next = kills > prev ? kills : prev;
+      try {
+        localStorage.setItem("ms_best", String(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const onVictory = ({ kills = 0, duration = stateRef.current?.time ?? 0 }) => {
+    setRunning(false);
+    setMode("victory");
+    setVictoryStats({ kills, duration });
     setBest((prev) => {
       const next = kills > prev ? kills : prev;
       try {
@@ -68,6 +89,7 @@ export default function App() {
     setMode("play");
     setRunning(true);
     setFlash("");
+    setVictoryStats(null);
   };
 
   const stopAmbientSource = () => {
@@ -276,7 +298,7 @@ export default function App() {
       }
 
       // рестарт после смерти
-      if (mode === "dead" && e.type === "keydown" && e.code === "KeyR") {
+      if ((mode === "dead" || mode === "victory") && e.type === "keydown" && e.code === "KeyR") {
         restart();
         return;
       }
@@ -355,6 +377,7 @@ export default function App() {
         update(stateRef.current, dt, {
           canvas,
           onDeath,
+          onVictory,
           queueFlash,
           audio: audioApiRef.current,
         });
@@ -412,6 +435,32 @@ export default function App() {
       {flash && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-4 py-2 rounded-xl shadow">
           {flash}
+        </div>
+      )}
+
+      {mode === "victory" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm px-4">
+          <div className="bg-slate-800/95 text-white rounded-2xl shadow-2xl px-8 py-6 w-full max-w-md text-center space-y-4">
+            <h2 className="text-3xl font-bold text-emerald-300">Вы победили!</h2>
+            <div className="space-y-2 text-left text-sm sm:text-base">
+              <div>
+                Монстров убито: <span className="font-semibold text-emerald-200">{victoryStats?.kills ?? 0}</span>
+              </div>
+              <div>
+                Длительность боя: <span className="font-semibold text-slate-100">{formatDuration(victoryStats?.duration ?? stateRef.current?.time ?? 0)}</span>
+              </div>
+              <div>
+                Рекорд убийств: <span className="font-semibold text-amber-200">{Math.max(best, victoryStats?.kills ?? 0)}</span>
+              </div>
+            </div>
+            <div className="text-xs text-slate-300">Нажмите R для быстрого рестарта</div>
+            <button
+              onClick={restart}
+              className="inline-flex items-center justify-center px-5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold transition"
+            >
+              Играть снова
+            </button>
+          </div>
         </div>
       )}
 

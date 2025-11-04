@@ -66,16 +66,40 @@ export const XP_LEVEL_BASE = 110;
 export const INITIAL_VILLAGERS = 6;
 export const VILLAGER_SPAWN_EVERY = 30;
 export const VILLAGER_SPEED = 150;
-export const VILLAGER_MEDKIT_DROP_INTERVAL = 15000;
+export const MEDKIT_BASE_INTERVAL = 32;
+export const MEDKIT_MIN_INTERVAL = 6;
 
 // кошки
-export const CAT_SPAWN_FACTOR = 6;
+export const CAT_SPAWN_FACTOR = 1;
 export const CAT_SPEED = ZOMBIE_BASE_SPEED * 2 * 0.9;
 export const CAT_MAX_HP = (PLAYER_MAX_HP * 0.75) * 0.5;
+export const CAT_MAX_COUNT = 3;
 
-// босс
-export const BOSS_SPAWN_AT = 120; // секунда появления
-export const BOSS_HP = 450;
-export const BOSS_SPEED = 65;
-export const BOSS_SHOOT_EVERY = 2.5;
-export const BOSS_BULLET_SPEED = 300;
+// боссы
+export const BOSS1_SPAWN_AT = 120; // секунда появления
+export const BOSS1_HP = 450;
+export const BOSS1_SPEED = 65;
+export const BOSS1_MELEE_DAMAGE = 65;
+export const BOSS2_SPAWN_DELAY = 120; // после смерти босса №1
+export const BOSS2_HP = 720;
+export const BOSS2_SPEED = PLAYER_SPEED * 0.95;
+export const BOSS2_MELEE_DAMAGE = 85;
+export const BOSS2_SHOTGUN_INTERVAL = 3.2;
+export const BOSS2_SHOTGUN_PELLETS = 7;
+export const BOSS2_SHOTGUN_SPREAD = 0.42;
+export const BOSS2_PHASE_THRESHOLD = 0.5;
+export const BOSS2_SHOTGUN_RANGE = 560;
+export const BOSS2_SPAWN_RATE_MULTIPLIER = 1.65;
+export const BOSS3_VILLAGER_WAVE = 10;
+export const BOSS3_SPAWN_DELAY_AFTER_RESCUE = 10;
+export const BOSS3_HP = 1100;
+export const BOSS3_SPEED = PLAYER_SPEED * 0.82;
+export const BOSS3_MELEE_DAMAGE = 95;
+export const BOSS3_MACHINEGUN_INTERVAL = 1.4;
+export const BOSS3_MACHINEGUN_BURST = 10;
+export const BOSS3_MACHINEGUN_RATE = 0.06;
+export const BOSS3_RADIAL_INTERVAL = 4.5;
+export const BOSS3_GRENADE_INTERVAL = 5.5;
+export const BOSS3_REGEN_DELAY = 3;
+export const BOSS3_REGEN_RATE = 28; // hp в секунду
+export const BOSS_CONTACT_RANGE = 140;
