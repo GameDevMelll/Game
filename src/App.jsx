@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { makeWalls } from "./game/maze.js";
 import { makePlayer } from "./game/entities.js";
-import { createInitialState, update, useMedkit } from "./game/update.js";
+import { createInitialState, update } from "./game/update.js";
 import {
   createAssetStore,
   SOUND_KEYS,
@@ -232,6 +232,22 @@ export default function App() {
     if (mode === "play" && running) ensureAudio();
   }, [mode, running]);
 
+  useEffect(() => {
+    const resizeCanvas = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const width = Math.max(320, window.innerWidth);
+      const height = Math.max(240, window.innerHeight);
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+    };
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+    return () => window.removeEventListener("resize", resizeCanvas);
+  }, []);
+  
   // инпут
   useEffect(() => {
     const onKey = (e) => {
@@ -265,19 +281,21 @@ export default function App() {
         return;
       }
 
-      // аптечка по Q
-      if (e.type === "keydown" && e.code === "KeyQ" && mode === "play") {
-        if (e.repeat) return;
-        useMedkit(stateRef.current, queueFlash, audioApiRef.current);
-        return;
-      }
-
-      // выбор по цифрам 1..5
+      // выбор по цифрам 1..0
       if (e.type === "keydown" && mode === "play" && e.code.startsWith("Digit")) {
-        const slot = Number(e.code.slice(5)) - 1; // Digit1 -> 0
-        if (slot >= 0 && slot < p.weapons.length) {
-          p.weapon = p.weapons[slot];
-          queueFlash(`Выбрано оружие: ${p.weapon}`);
+      if (e.repeat) return;
+        const digit = e.code.slice(5);
+        let slot = Number(digit);
+        if (Number.isNaN(slot)) return;
+        if (digit === "0") slot = 9;
+        else slot = slot - 1;
+        if (slot < 0) return;
+        const inventory = Array.isArray(p.inventory) ? p.inventory : [];
+        if (slot < inventory.length) {
+          p.selectedSlot = slot;
+          p.weapon = inventory[slot]?.type ?? null;
+          if (p.weapon) queueFlash(`Выбран слот ${slot + 1}: ${p.weapon}`);
+          else queueFlash(`Слот ${slot + 1} пуст`);
         }
       }
     };
@@ -401,10 +419,10 @@ export default function App() {
       <div className="absolute top-3 right-3 bg-slate-900/50 text-white text-xs rounded-lg px-3 py-2 pointer-events-none backdrop-blur">
         <div className="font-semibold mb-1">Управление</div>
         <div>WASD / стрелки — движение</div>
-        <div>Мышь / Space — атака / поставить мину</div>
+       <div>Мышь / Space — атака или установка предмета</div>
         <div>E — подобрать предмет</div>
-        <div>Q — использовать аптечку</div>
-        <div>1..5 — выбрать слот</div>
+        <div>1..9, 0 — выбрать слот инвентаря</div>
+        <div>ЛКМ по выбранному слоту — использовать</div>
         <div>Esc — пауза</div>
         <div>R — рестарт (после смерти)</div>
       </div>
