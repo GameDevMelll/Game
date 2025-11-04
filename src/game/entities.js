@@ -10,8 +10,6 @@ import {
   BOMBER_MINE_DELAY,
   XP_PER_KILL,
   XP_LEVEL_BASE,
-  VILLAGER_MEDKIT_DROP_INTERVAL,
-  CAT_HP,
 } from "./constants.js";
 
 const ZOMBIE_BASE_HP = 34;
@@ -26,7 +24,6 @@ export const makePlayer = () => ({
   xp: 0,
   nextLevelXp: XP_LEVEL_BASE,
   facing: 0,
-  spriteDir: -1,
   weapon: null,
   weapons: [],
   ammo: 0,
@@ -55,7 +52,6 @@ const makeBaseZombie = (x, y, kind, overrides = {}) => ({
   stateTimer: 0,
   xp: XP_PER_KILL,
   mineTimer: null,
-  spriteDir: -1,
   ...overrides,
 });
 
@@ -191,18 +187,6 @@ export const makeVillager = (x, y) => ({
   maxHp: PLAYER_MAX_HP * 0.75,
   wanderTimer: randWander(),
   wanderAng: Math.random() * Math.PI * 2,
-  medkitTimer: VILLAGER_MEDKIT_DROP_INTERVAL,
-  spriteDir: -1,
-});
-
-export const makeCat = (x, y) => ({
-  x,
-  y,
-  r: 12,
-  hp: CAT_HP,
-  maxHp: CAT_HP,
-  wanderTimer: 0,
-  spriteDir: -1,
 });
 
 export const makeBoss = (x, y) => ({
@@ -214,7 +198,6 @@ export const makeBoss = (x, y) => ({
   speed: BOSS_SPEED,
   kind: "boss",
   xp: XP_PER_KILL + 120,
-  spriteDir: -1,
   behavior: "boss",
   state: "idle",
   stateTimer: 0,
