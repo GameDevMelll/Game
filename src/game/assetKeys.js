@@ -10,6 +10,8 @@ export const TEXTURE_KEYS = {
   WITCH: "witch",
   BOMBER: "bomber",
   BOSS: "boss",
+  BOSS2: "boss2",
+  BOSS3: "boss3",
   PROJECTILE_PLAYER: "projectile_player",
   PROJECTILE_ENEMY: "projectile_enemy",
   SLASH: "slash",
@@ -42,6 +44,11 @@ export const SOUND_KEYS = {
   MINE_EXPLODE: "mine_explode",
   LEVEL_UP: "level_up",
   WITCH_SHOOT: "witch_shoot",
+  MONSTER_SPAWN: "monster_spawn",
+  BOSS2_PHASE: "boss2_phase",
+  RESCUE_SPAWN: "rescue_spawn",
+  BOSS3_SPAWN: "boss3_spawn",
+  WALL_BREAK: "wall_break",
 };
 
 export const SOUND_DEFAULT_GAINS = {
@@ -54,4 +61,9 @@ export const SOUND_DEFAULT_GAINS = {
   [SOUND_KEYS.MINE_EXPLODE]: 0.75,
   [SOUND_KEYS.LEVEL_UP]: 0.7,
   [SOUND_KEYS.WITCH_SHOOT]: 0.55,
+  [SOUND_KEYS.MONSTER_SPAWN]: 0.45,
+  [SOUND_KEYS.BOSS2_PHASE]: 0.7,
+  [SOUND_KEYS.RESCUE_SPAWN]: 0.7,
+  [SOUND_KEYS.BOSS3_SPAWN]: 0.75,
+  [SOUND_KEYS.WALL_BREAK]: 0.65,
 };

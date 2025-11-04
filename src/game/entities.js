@@ -2,8 +2,12 @@ import {
   WORLD,
   PLAYER_MAX_HP,
   ZOMBIE_BASE_SPEED,
-  BOSS_HP,
-  BOSS_SPEED,
+  BOSS1_HP,
+  BOSS1_SPEED,
+  BOSS2_HP,
+  BOSS2_SPEED,
+  BOSS3_HP,
+  BOSS3_SPEED,
   BULLET_SPEED,
   SKELETON_HP,
   GHOST_SPEED_MULT,
@@ -13,7 +17,6 @@ import {
   INVENTORY_SLOTS,
   CAT_MAX_HP,
   CAT_SPEED,
-  VILLAGER_MEDKIT_DROP_INTERVAL,
 } from "./constants.js";
 
 const ZOMBIE_BASE_HP = 34;
@@ -196,23 +199,54 @@ export const makeVillager = (x, y) => ({
   wanderTimer: randWander(),
   wanderAng: Math.random() * Math.PI * 2,
   facingDir: "left",
-  medkitTimer: VILLAGER_MEDKIT_DROP_INTERVAL,
 });
 
-export const makeBoss = (x, y) => ({
+const makeBossBase = (x, y, overrides = {}) => ({
   x,
   y,
   r: 60,
-  hp: BOSS_HP,
-  maxHp: BOSS_HP,
-  speed: BOSS_SPEED,
-  kind: "boss",
   xp: XP_PER_KILL + 120,
   behavior: "boss",
   state: "idle",
   stateTimer: 0,
   facingDir: "left",
+  id: Math.random().toString(36).slice(2),
+  ...overrides,
 });
+
+export const makeBoss = (x, y, stage = 1) => {
+  if (stage === 2) {
+    return makeBossBase(x, y, {
+      r: 66,
+      hp: BOSS2_HP,
+      maxHp: BOSS2_HP,
+      speed: BOSS2_SPEED,
+      kind: "boss2",
+      shotgunTimer: 1.5,
+      phase: "stage1",
+    });
+  }
+  if (stage === 3) {
+    return makeBossBase(x, y, {
+      r: 72,
+      hp: BOSS3_HP,
+      maxHp: BOSS3_HP,
+      speed: BOSS3_SPEED,
+      kind: "boss3",
+      machinegunTimer: 0.8,
+      radialTimer: 2.5,
+      grenadeTimer: 3.5,
+      lastDamageTime: 0,
+      targetingVillager: false,
+    });
+  }
+  return makeBossBase(x, y, {
+    hp: BOSS1_HP,
+    maxHp: BOSS1_HP,
+    speed: BOSS1_SPEED,
+    kind: "boss1",
+  });
+};
 
 export const makeCat = (x, y) => ({
   x,

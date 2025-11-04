@@ -4,7 +4,7 @@ import { TEXTURE_MANIFEST, SOUND_MANIFEST } from "./assetManifest.js";
 const resolveEntry = (entry) => {
   if (!entry) return null;
   if (typeof entry === "string") return { src: entry };
-  if (entry?.src) return { src: entry.src, gain: entry.gain };
+  if (entry?.src) return { src: entry.src, gain: entry.gain, tint: entry.tint };
   return null;
 };
 
@@ -23,11 +23,31 @@ export const loadConfiguredTextures = async (manifest = TEXTURE_MANIFEST) => {
           }
           const img = new Image();
           img.onload = () => {
-            textures[key] = {
-              image: img,
-              patternCache: new WeakMap(),
+            const finish = (image) => {
+              textures[key] = {
+                image,
+                patternCache: new WeakMap(),
+              };
+              resolve();
             };
-            resolve();
+            if (resolved.tint && typeof document !== "undefined") {
+              const canvas = document.createElement("canvas");
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext("2d");
+              if (ctx) {
+                ctx.drawImage(img, 0, 0);
+                ctx.globalCompositeOperation = "source-atop";
+                ctx.fillStyle = resolved.tint;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                const tinted = new Image();
+                tinted.onload = () => finish(tinted);
+                tinted.onerror = () => finish(img);
+                tinted.src = canvas.toDataURL();
+                return;
+              }
+            }
+            finish(img);
           };
           img.onerror = () => resolve();
           img.src = resolved.src;
