@@ -76,11 +76,11 @@ export const CAT_MAX_HP = (PLAYER_MAX_HP * 0.75) * 0.5;
 export const CAT_MAX_COUNT = 3;
 
 // боссы
-export const BOSS1_SPAWN_AT = 120; // секунда появления
+export const BOSS1_SPAWN_AT = 90; // секунда появления
 export const BOSS1_HP = 450;
 export const BOSS1_SPEED = 65;
 export const BOSS1_MELEE_DAMAGE = 65;
-export const BOSS2_SPAWN_DELAY = 120; // после смерти босса №1
+export const BOSS2_SPAWN_DELAY = 30; // после смерти босса №1
 export const BOSS2_HP = 720;
 export const BOSS2_SPEED = PLAYER_SPEED * 0.95;
 export const BOSS2_MELEE_DAMAGE = 85;
