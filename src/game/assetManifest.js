@@ -24,12 +24,13 @@ import gunPng from "../assets/textures/gun.png";
 import fogPng from "../assets/textures/fog.png";
 import bomPng from "../assets/textures/bom.png";
 import waaaPng from "../assets/textures/waaa.png";
+import versaPng from "../assets/textures/versa.png";
 import bembMp3 from "../assets/music/bemb.mp3"; //
 
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: backPng,
   [TEXTURE_KEYS.WALL]: waaaPng,
-  [TEXTURE_KEYS.PLAYER]: null,
+  [TEXTURE_KEYS.PLAYER]: versaPng,
   [TEXTURE_KEYS.VILLAGER]: mellPng,
   [TEXTURE_KEYS.ZOMBIE]: zombiePng,      
   [TEXTURE_KEYS.RANGED]: RangedPng,
