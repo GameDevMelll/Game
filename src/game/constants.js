@@ -11,6 +11,8 @@ export const MELEE_RANGE = 55;
 export const MELEE_DAMAGE = 25;
 export const BULLET_SPEED = 540;
 export const PICKUP_RADIUS = 48;
+export const INVENTORY_SLOTS = 10;
+export const PLAYER_INVULN_DURATION = 1.0;
 
 // рывок
 export const DASH_SPEED = 520;
@@ -47,6 +49,9 @@ export const WITCH_MAX_AGE = 180;
 
 // мины
 export const MINE_EXPLOSION_RADIUS = 128;
+export const GRENADE_FUSE = 1.5;
+export const GRENADE_EXPLOSION_RADIUS = MINE_EXPLOSION_RADIUS * 0.5;
+export const GRENADE_THROW_SPEED = BULLET_SPEED * 0.46;
 
 // день/ночь
 export const DAY_DURATION = 60;
@@ -61,6 +66,12 @@ export const XP_LEVEL_BASE = 110;
 export const INITIAL_VILLAGERS = 6;
 export const VILLAGER_SPAWN_EVERY = 30;
 export const VILLAGER_SPEED = 150;
+export const VILLAGER_MEDKIT_DROP_INTERVAL = 15;
+
+// кошки
+export const CAT_SPAWN_FACTOR = 6;
+export const CAT_SPEED = ZOMBIE_BASE_SPEED * 2 * 0.9;
+export const CAT_MAX_HP = (PLAYER_MAX_HP * 0.75) * 0.5;
 
 // босс
 export const BOSS_SPAWN_AT = 120; // секунда появления
