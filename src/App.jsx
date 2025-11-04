@@ -316,7 +316,7 @@ export default function App() {
     };
   }, [mode]);
 
-  // цикл
+  // главный цикл
   useEffect(() => {
     let frame;
     let last = 0;
@@ -329,6 +329,7 @@ export default function App() {
       const ctx = canvas.getContext("2d");
       const dt = Math.min(0.033, (t - last) / 1000);
       last = t;
+
       if (mode === "play" && running) {
         update(stateRef.current, dt, {
           canvas,
@@ -337,6 +338,7 @@ export default function App() {
           audio: audioApiRef.current,
         });
       }
+
       draw(ctx, stateRef.current, mode, best);
 
       if (audioCtxRef.current && ambientGainRef.current) {
@@ -381,6 +383,8 @@ export default function App() {
           {flash}
         </div>
       )}
+
+      {/* Панель управления (подсказки) */}
       <div className="absolute top-3 right-3 bg-slate-900/50 text-white text-xs rounded-lg px-3 py-2 pointer-events-none backdrop-blur">
         <div className="font-semibold mb-1">Управление</div>
         <div>WASD / стрелки — движение</div>
