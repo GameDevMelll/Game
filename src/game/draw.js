@@ -3,26 +3,36 @@ import {
   NIGHT_DURATION,
   DAY_NIGHT_CYCLE,
   PLAYER_MAX_HP,
+  INVENTORY_SLOTS,
 } from "./constants.js";
 import { TEXTURE_KEYS } from "./assets.js";
-import { clamp, lerpColor } from "./utils.js";
+import { clamp, lerpColor, drawFlipped } from "./utils.js";
 
 const ITEM_TEXTURE_MAP = {
   bat: TEXTURE_KEYS.BAT,
   pistol: TEXTURE_KEYS.PISTOL,
   ammo: TEXTURE_KEYS.AMMO,
   medkit: TEXTURE_KEYS.MEDKIT,
-  mine: TEXTURE_KEYS.MINE,
+  mine: TEXTURE_KEYS.MINE_IDLE,
   shotgun: TEXTURE_KEYS.SHOTGUN,
-  glaive: TEXTURE_KEYS.GLAIVE,
+  axe: TEXTURE_KEYS.AXE,
+  machinegun: TEXTURE_KEYS.MACHINEGUN,
+  pitchfork: TEXTURE_KEYS.PITCHFORK,
+  grenade: TEXTURE_KEYS.GRENADE,
+  shield: TEXTURE_KEYS.SHIELD,
 };
 
 const WEAPON_TEXTURE_MAP = {
   bat: TEXTURE_KEYS.BAT,
   pistol: TEXTURE_KEYS.PISTOL,
   shotgun: TEXTURE_KEYS.SHOTGUN,
-  glaive: TEXTURE_KEYS.GLAIVE,
-  mine: TEXTURE_KEYS.MINE,
+  axe: TEXTURE_KEYS.AXE,
+  machinegun: TEXTURE_KEYS.MACHINEGUN,
+  pitchfork: TEXTURE_KEYS.PITCHFORK,
+  mine: TEXTURE_KEYS.MINE_IDLE,
+  grenade: TEXTURE_KEYS.GRENADE,
+  shield: TEXTURE_KEYS.SHIELD,
+  medkit: TEXTURE_KEYS.MEDKIT,
 };
 
 const ZOMBIE_TEXTURE_MAP = {
@@ -37,12 +47,14 @@ const RANGED_TEXTURE_MAP = {
   white: TEXTURE_KEYS.RANGED,
 };
 
+const STACKABLE_UI_ITEMS = new Set(["mine", "medkit", "grenade", "shield"]);
+
 const getTexture = (textures, key) => {
   if (!key) return null;
   return textures?.[key] || null;
 };
 
-const drawTextureCircle = (ctx, texture, radius) => {
+const drawTextureCircle = (ctx, texture, radius, flipX = false) => {
   if (!texture) return false;
   const img = texture.image;
   if (!img || !img.complete) return false;
@@ -50,7 +62,11 @@ const drawTextureCircle = (ctx, texture, radius) => {
   const scale = (radius * 2) / maxSide;
   const w = img.width * scale;
   const h = img.height * scale;
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+   if (flipX) {
+    drawFlipped(ctx, img, 0, 0, true, w, h);
+  } else {
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  }
   return true;
 };
 
@@ -129,19 +145,55 @@ const drawGroundItem = (ctx, item, textures) => {
       ctx.fillStyle = "#facc15";
       ctx.fillRect(6, -3, 14, 6);
       break;
-    case "glaive":
+     case "axe":
       ctx.save();
-      ctx.rotate(-Math.PI / 4);
-      ctx.fillStyle = "#1f2937";
-      ctx.fillRect(-4, -26, 8, 52);
-      ctx.fillStyle = "#38bdf8";
+     ctx.rotate(-Math.PI / 6);
+      ctx.fillStyle = "#4b5563";
+      ctx.fillRect(-3, -24, 6, 48);
+      ctx.fillStyle = "#f97316";
       ctx.beginPath();
-      ctx.moveTo(-10, -32);
-      ctx.lineTo(18, -6);
-      ctx.lineTo(-10, 20);
+      ctx.moveTo(4, -18);
+      ctx.lineTo(20, -2);
+      ctx.lineTo(4, 14);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
+      break;
+      case "machinegun":
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(-20, -4, 40, 8);
+      ctx.fillStyle = "#2563eb";
+      ctx.fillRect(-10, -6, 12, 12);
+      ctx.fillStyle = "#94a3b8";
+      ctx.fillRect(10, -3, 12, 6);
+      break;
+    case "pitchfork":
+      ctx.save();
+      ctx.rotate(Math.PI / 12);
+      ctx.fillStyle = "#7f1d1d";
+      ctx.fillRect(-3, -24, 6, 48);
+      ctx.restore();
+      ctx.fillStyle = "#d1d5db";
+      ctx.fillRect(6, -18, 3, 36);
+      ctx.fillRect(12, -18, 3, 36);
+      ctx.fillRect(18, -18, 3, 36);
+      break;
+    case "grenade":
+      ctx.fillStyle = "#14532d";
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#86efac";
+      ctx.fillRect(-2, -12, 4, 6);
+      break;
+    case "shield":
+      ctx.fillStyle = "#bae6fd";
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#0284c7";
+      ctx.lineWidth = 3;
+      ctx.stroke();
       break;
     default:
       ctx.fillStyle = "#9ca3af";
@@ -173,29 +225,69 @@ const drawWeaponIcon = (ctx, weapon, textures) => {
       ctx.fillStyle = "#facc15";
       ctx.fillRect(8, -3, 10, 6);
       break;
-    case "glaive":
+    case "axe":
       ctx.save();
-      ctx.rotate(-Math.PI / 4);
-      ctx.fillStyle = "#1f2937";
+      ctx.rotate(-Math.PI / 6);
+      ctx.fillStyle = "#475569";
       ctx.fillRect(-3, -20, 6, 40);
-      ctx.fillStyle = "#38bdf8";
+      ctx.fillStyle = "#f97316";
       ctx.beginPath();
-      ctx.moveTo(-8, -26);
-      ctx.lineTo(14, -8);
-      ctx.lineTo(-8, 12);
+      ctx.moveTo(6, -16);
+      ctx.lineTo(18, -2);
+      ctx.lineTo(6, 12);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
       break;
     case "mine":
-      ctx.fillStyle = "#444";
+      ctx.fillStyle = "#1f2937";
       ctx.beginPath();
       ctx.arc(0, 0, 10, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#dc2626";
+      ctx.fillStyle = "#ef4444";
       ctx.beginPath();
       ctx.arc(0, 0, 3, 0, Math.PI * 2);
       ctx.fill();
+      break;
+       case "machinegun":
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(-18, -3, 36, 6);
+      ctx.fillStyle = "#2563eb";
+      ctx.fillRect(-6, -6, 12, 12);
+      break;
+    case "pitchfork":
+      ctx.fillStyle = "#7f1d1d";
+      ctx.fillRect(-2, -20, 4, 40);
+      ctx.fillStyle = "#d1d5db";
+      ctx.fillRect(6, -16, 3, 32);
+      ctx.fillRect(12, -16, 3, 32);
+      ctx.fillRect(18, -16, 3, 32);
+      break;
+    case "grenade":
+      ctx.fillStyle = "#14532d";
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#86efac";
+      ctx.fillRect(-2, -11, 4, 5);
+      break;
+    case "shield":
+      ctx.fillStyle = "#bae6fd";
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#0284c7";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      break;
+    case "medkit":
+      ctx.fillStyle = "#f1f5f9";
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ef4444";
+      ctx.fillRect(-2, -6, 4, 12);
+      ctx.fillRect(-6, -2, 12, 4);
       break;
     default:
       ctx.fillStyle = "#94a3b8";
@@ -211,6 +303,8 @@ export function draw(ctx, state, mode, bestScore) {
   const h = ctx.canvas.height;
   const villagers = state.villagers ?? [];
   const villagerCount = villagers.length;
+  const cats = state.cats ?? [];
+  const catCount = cats.length;
   const textures = state.assets?.textures || {};
 
   // day-night
@@ -287,7 +381,8 @@ export function draw(ctx, state, mode, bestScore) {
   }
 
   // mines
-  const mineTexture = getTexture(textures, TEXTURE_KEYS.MINE);
+  const mineIdleTexture = getTexture(textures, TEXTURE_KEYS.MINE_IDLE);
+  const mineArmedTexture = getTexture(textures, TEXTURE_KEYS.MINE_ARMED);
   for (const m of state.mines) {
     ctx.save();
     ctx.translate(m.x, m.y);
@@ -295,17 +390,58 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.ellipse(0, 6, 14, 6, 0, 0, Math.PI * 2);
     ctx.fill();
-    const drawnMine = drawTextureCircle(ctx, mineTexture, 14);
-    if (!drawnMine) {
-      ctx.fillStyle = "#444";
+    const texture = m.state === "armed" ? mineArmedTexture : mineIdleTexture;
+    if (!drawTextureCircle(ctx, texture, 14)) {
+      ctx.fillStyle = m.state === "armed" ? "#991b1b" : "#444";
       ctx.beginPath();
       ctx.arc(0, 0, 11, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = m.state === "armed" ? "#dc2626" : "#38bdf8";
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
     }
-    ctx.fillStyle = m.state === "armed" ? "#dc2626" : "#38bdf8";
+    ctx.restore();
+  }
+
+  // bombs
+  const bombTexture = getTexture(textures, TEXTURE_KEYS.BOMB);
+  for (const bomb of state.bombs) {
+    ctx.save();
+    ctx.translate(bomb.x, bomb.y);
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
     ctx.beginPath();
-    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.ellipse(0, 8, 16, 8, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (!drawTextureCircle(ctx, bombTexture, 16)) {
+      ctx.fillStyle = "#1f2937";
+      ctx.beginPath();
+      ctx.arc(0, 0, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#ef4444";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // grenades in flight
+  const grenadeTexture = getTexture(textures, TEXTURE_KEYS.GRENADE);
+  for (const grenade of state.grenades) {
+    ctx.save();
+    ctx.translate(grenade.x, grenade.y);
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 10, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (!drawTextureCircle(ctx, grenadeTexture, 10)) {
+      ctx.fillStyle = "#14532d";
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#86efac";
+      ctx.fillRect(-2, -10, 4, 5);
+    }
     ctx.restore();
   }
 
@@ -372,7 +508,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.ellipse(0, 7, 18, 9, 0, 0, Math.PI * 2);
     ctx.fill();
-    const drawnVillager = drawTextureCircle(ctx, villagerTexture, v.r);
+    const drawnVillager = drawTextureCircle(ctx, villagerTexture, v.r, v.facingDir === "left");
     if (!drawnVillager) {
       ctx.fillStyle = "#60a5fa";
       ctx.beginPath();
@@ -387,6 +523,41 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillRect(-18, -v.r - 12, 36, 4);
     ctx.fillStyle = "#34d399";
     ctx.fillRect(-18, -v.r - 12, 36 * ratio, 4);
+    ctx.restore();
+  }
+
+   // cats
+  const catTexture = getTexture(textures, TEXTURE_KEYS.CAT);
+  for (const cat of cats) {
+    ctx.save();
+    ctx.translate(cat.x, cat.y);
+    ctx.fillStyle = "rgba(0,0,0,0.08)";
+    ctx.beginPath();
+    ctx.ellipse(0, 5, 14, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const drawnCat = drawTextureCircle(ctx, catTexture, cat.r, cat.facingDir === "left");
+    if (!drawnCat) {
+      ctx.fillStyle = "#fbbf24";
+      ctx.beginPath();
+      ctx.arc(0, 0, cat.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(-4, -2, 2, 2);
+      ctx.fillRect(2, -2, 2, 2);
+      ctx.beginPath();
+      ctx.moveTo(-5, cat.r * 0.3);
+      ctx.lineTo(-9, cat.r * 0.7);
+      ctx.moveTo(5, cat.r * 0.3);
+      ctx.lineTo(9, cat.r * 0.7);
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    const ratio = clamp(cat.hp / (cat.maxHp || 1), 0, 1);
+    ctx.fillStyle = "rgba(15,23,42,0.5)";
+    ctx.fillRect(-14, -cat.r - 10, 28, 3);
+    ctx.fillStyle = "#fcd34d";
+    ctx.fillRect(-14, -cat.r - 10, 28 * ratio, 3);
     ctx.restore();
   }
 
@@ -422,7 +593,7 @@ export function draw(ctx, state, mode, bestScore) {
     let alpha = 1;
     if (z.kind === "ghost") alpha = 0.55;
     ctx.globalAlpha = alpha;
-    const drewZombie = drawTextureCircle(ctx, zombieTexture, z.r);
+    const drewZombie = drawTextureCircle(ctx, zombieTexture, z.r, z.facingDir === "left");
     if (!drewZombie) {
       let bodyColor = "#7fb36a";
       if (z.kind === "fat") bodyColor = "#6b8f57";
@@ -474,7 +645,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.ellipse(0, 8, (isWitch ? 26 : 22), (isWitch ? 13 : 11), 0, 0, Math.PI * 2);
     ctx.fill();
     const rangedTexture = getTexture(textures, RANGED_TEXTURE_MAP[wht.type]) || defaultRangedTexture;
-    const drewRanged = drawTextureCircle(ctx, rangedTexture, wht.r);
+    const drewRanged = drawTextureCircle(ctx, rangedTexture, wht.r, wht.facingDir === "left");
     if (!drewRanged) {
       ctx.fillStyle = isWitch ? "#7c3aed" : "#e2e8f0";
       ctx.beginPath();
@@ -534,16 +705,18 @@ export function draw(ctx, state, mode, bestScore) {
   }
 
   // player
+  const flipPlayer = p.facingDir === "left";
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.fillStyle = "rgba(0,0,0,0.12)";
   ctx.beginPath();
   ctx.ellipse(0, 10, 22, 10, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.rotate(p.facing);
   const playerTexture = getTexture(textures, TEXTURE_KEYS.PLAYER);
-  const playerDrawn = drawTextureCircle(ctx, playerTexture, p.r);
+  const playerDrawn = drawTextureCircle(ctx, playerTexture, p.r, flipPlayer);
   if (!playerDrawn) {
+     ctx.save();
+    if (flipPlayer) ctx.scale(-1, 1);
     ctx.fillStyle = "#4f9ee3";
     ctx.beginPath();
     ctx.arc(0, 0, p.r, 0, Math.PI * 2);
@@ -553,45 +726,97 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.arc(7, -4, 2, 0, Math.PI * 2);
     ctx.arc(7, 4, 2, 0, Math.PI * 2);
     ctx.fill();
-    if (p.weapon === "bat") {
-      const swingT = Math.max(0, p.swing) / 0.28;
-      const extraRot = swingT > 0 ? -1.2 + (1 - swingT) * 1.2 : 0;
-      ctx.save();
-      ctx.rotate(extraRot);
-      ctx.fillStyle = "#8b5a2b";
-      ctx.fillRect(p.r * 0.6, -3, 16, 6);
-      ctx.restore();
-    } else if (p.weapon === "pistol") {
-      ctx.fillStyle = "#333";
-      ctx.fillRect(p.r * 0.6, -3, 10, 6);
-    } else if (p.weapon === "shotgun") {
-      ctx.fillStyle = "#2f2f2f";
-      ctx.fillRect(p.r * 0.4, -4, 20, 8);
-      ctx.fillStyle = "#b91c1c";
-      ctx.fillRect(p.r * 0.4 + 6, -6, 8, 12);
-      ctx.fillStyle = "#facc15";
-      ctx.fillRect(p.r * 0.4 + 16, -3, 8, 6);
-    } else if (p.weapon === "glaive") {
-      ctx.save();
-      ctx.rotate(0.2);
-      ctx.fillStyle = "#334155";
-      ctx.fillRect(p.r * 0.1, -3, 8, 36);
-      ctx.fillStyle = "#38bdf8";
-      ctx.beginPath();
-      ctx.moveTo(p.r * 0.1 + 4, -26);
-      ctx.lineTo(p.r * 0.1 + 24, 0);
-      ctx.lineTo(p.r * 0.1 + 4, 26);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    } else if (p.weapon === "mine") {
-      ctx.fillStyle = "#444";
-      ctx.fillRect(p.r * 0.6, -3, 10, 6);
-    }
+   ctx.restore();
+  }
+  ctx.restore();
+
+  // weapon overlay
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.facing);
+  const weaponType = p.weapon;
+  if (weaponType === "bat") {
+    const swingT = Math.max(0, p.swing) / 0.28;
+    const extraRot = swingT > 0 ? -1.2 + (1 - swingT) * 1.2 : 0;
+    ctx.save();
+    ctx.rotate(extraRot);
+    ctx.fillStyle = "#8b5a2b";
+    ctx.fillRect(p.r * 0.6, -3, 16, 6);
+    ctx.restore();
+  } else if (weaponType === "pistol") {
+    ctx.fillStyle = "#333";
+    ctx.fillRect(p.r * 0.6, -3, 10, 6);
+  } else if (weaponType === "shotgun") {
+    ctx.fillStyle = "#2f2f2f";
+    ctx.fillRect(p.r * 0.4, -4, 20, 8);
+    ctx.fillStyle = "#b91c1c";
+    ctx.fillRect(p.r * 0.4 + 6, -6, 8, 12);
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(p.r * 0.4 + 16, -3, 8, 6);
+  } else if (weaponType === "axe") {
+    ctx.save();
+    ctx.rotate(0.2);
+    ctx.fillStyle = "#334155";
+    ctx.fillRect(p.r * 0.1, -3, 8, 36);
+    ctx.fillStyle = "#f97316";
+    ctx.beginPath();
+    ctx.moveTo(p.r * 0.1 + 4, -26);
+    ctx.lineTo(p.r * 0.1 + 24, 0);
+    ctx.lineTo(p.r * 0.1 + 4, 26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  } else if (weaponType === "machinegun") {
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(p.r * 0.3, -3, 24, 6);
+    ctx.fillStyle = "#2563eb";
+    ctx.fillRect(p.r * 0.3 + 6, -5, 10, 10);
+  } else if (weaponType === "pitchfork") {
+    ctx.save();
+    ctx.rotate(0.05);
+    ctx.fillStyle = "#7f1d1d";
+    ctx.fillRect(p.r * 0.2, -3, 6, 40);
+    ctx.fillStyle = "#d1d5db";
+    ctx.fillRect(p.r * 0.2 + 14, -16, 4, 32);
+    ctx.fillRect(p.r * 0.2 + 20, -16, 4, 32);
+    ctx.fillRect(p.r * 0.2 + 26, -16, 4, 32);
+    ctx.restore();
+  } else if (weaponType === "mine") {
+    ctx.fillStyle = "#1f2937";
+    ctx.fillRect(p.r * 0.6, -3, 10, 6);
+  } else if (weaponType === "grenade") {
+    ctx.fillStyle = "#14532d";
+    ctx.beginPath();
+    ctx.arc(p.r * 0.5, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (weaponType === "shield") {
+    ctx.fillStyle = "rgba(59,130,246,0.35)";
+    ctx.beginPath();
+    ctx.arc(0, 0, p.r + 20, -Math.PI / 6, Math.PI / 6);
+    ctx.fill();
   }
   ctx.restore();
 
   ctx.restore(); // camera
+
+  const activeBoss = state.zombies.find((z) => z.kind === "boss");
+  if (activeBoss) {
+    const ratio = clamp(activeBoss.hp / (activeBoss.maxHp || 1), 0, 1);
+    const barWidth = Math.min(520, w - 120);
+    const barX = w / 2 - barWidth / 2;
+    const barY = 18;
+    ctx.fillStyle = "rgba(15,23,42,0.65)";
+    ctx.fillRect(barX, barY, barWidth, 16);
+    ctx.fillStyle = "#ef4444";
+    ctx.fillRect(barX, barY, barWidth * ratio, 16);
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.strokeRect(barX, barY, barWidth, 16);
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("HP босса", w / 2, barY - 4);
+    ctx.textAlign = "left";
+  }
 
   // HUD: HP
   const hudW = 220;
@@ -616,34 +841,38 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillRect(56, 46, xpRatio * (hudW - 66), 10);
   ctx.fillStyle = "#cbd5f5";
   ctx.fillText(`XP ${Math.round(p.xp)} / ${p.nextLevelXp}`, 56, 62);
-  ctx.fillStyle = "#fef08a";
-  ctx.fillText(`Аптечки: ${p.medkits || 0}`, 26, 72);
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillText(`Патроны: ${p.ammo}`, 26, 72);
 
   // HUD: оружие
   ctx.fillStyle = "rgba(15,23,42,0.65)";
   ctx.fillRect(w - 230, 16, 210, 96);
   ctx.fillStyle = "#fff";
   ctx.fillText(`Оружие: ${p.weapon ? p.weapon : "—"}`, w - 220, 36);
-  ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
-  ctx.fillText(`Мины: ${p.mines}`, w - 220, 72);
-  ctx.fillText(`Жители: ${villagerCount}`, w - 220, 88);
+  ctx.fillText(`Жители: ${villagerCount}`, w - 220, 56);
+  ctx.fillText(`Кошки: ${catCount}`, w - 220, 72);
+  const grenadeCount = Array.isArray(p.inventory)
+    ? p.inventory.reduce((s, slot) => (slot?.type === "grenade" ? s + (slot.count ?? 1) : s), 0)
+    : 0;
+  ctx.fillText(`Гранат: ${grenadeCount}`, w - 220, 88);
 
   // kills (без рекорда)
   ctx.fillStyle = "rgba(15,23,42,0.65)";
-  ctx.fillRect(14, h - 76, 196, 60);
+  ctx.fillRect(14, h - 88, 196, 72);
   ctx.fillStyle = "#fff";
   ctx.textAlign = "left";
-  ctx.fillText(`Убито: ${state.kills}`, 22, h - 52);
-  ctx.fillText(`Жители: ${villagerCount}`, 22, h - 28);
+  ctx.fillText(`Убито: ${state.kills}`, 22, h - 64);
+  ctx.fillText(`Жители: ${villagerCount}`, 22, h - 40);
+  ctx.fillText(`Кошки: ${catCount}`, 22, h - 16);
 
-  // инвентарь (5 слотов)
-  const invSlots = 5;
+  // инвентарь (10 слотов)
+  const invSlots = INVENTORY_SLOTS;
   const slotSize = 42;
   const slotGap = 4;
   const invTotalW = invSlots * slotSize + (invSlots - 1) * slotGap;
   const invX = w / 2 - invTotalW / 2;
   const invY = h - 76;
-  const weapons = p.weapons || [];
+  const inventory = Array.isArray(p.inventory) ? p.inventory : [];
   for (let i = 0; i < invSlots; i++) {
     const sx = invX + i * (slotSize + slotGap);
     const sy = invY;
@@ -651,14 +880,15 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillRect(sx, sy, slotSize, slotSize);
     ctx.strokeStyle = "rgba(255,255,255,0.25)";
     ctx.strokeRect(sx, sy, slotSize, slotSize);
-    const wpn = weapons[i];
-    if (wpn) {
+    const slot = inventory[i];
+    const type = slot?.type;
+    if (type) {
       ctx.save();
       ctx.translate(sx + slotSize / 2, sy + slotSize / 2);
-      drawWeaponIcon(ctx, wpn, textures);
+      drawWeaponIcon(ctx, type, textures);
       ctx.restore();
     }
-    if (p.weapon === wpn) {
+     if (p.selectedSlot === i) {
       ctx.strokeStyle = "#38bdf8";
       ctx.lineWidth = 2;
       ctx.strokeRect(sx - 1, sy - 1, slotSize + 2, slotSize + 2);
@@ -666,7 +896,25 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillStyle = "rgba(255,255,255,0.5)";
     ctx.font = "10px system-ui, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(String(i + 1), sx + 5, sy + 13);
+    const keyLabel = i === 9 ? "0" : String(i + 1);
+    ctx.fillText(keyLabel, sx + 5, sy + 13);
+    if (type && STACKABLE_UI_ITEMS.has(type)) {
+      const count = slot?.count ?? 0;
+      if (count > 0) {
+        ctx.save();
+        ctx.translate(sx + slotSize - 10, sy + slotSize - 10);
+        ctx.fillStyle = "#0f172a";
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "10px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(count), 0, 1);
+        ctx.restore();
+      }
+    }
   }
 
   // night overlay
