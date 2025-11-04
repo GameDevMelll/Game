@@ -51,7 +51,7 @@ export const TEXTURE_MANIFEST = {
 };
 
 export const SOUND_MANIFEST = {
-  [SOUND_KEYS.AMBIENT]: null,
+  [SOUND_KEYS.AMBIENT]: bembMp3,
   [SOUND_KEYS.MELODY]: bembMp3,
   [SOUND_KEYS.PLAYER_ATTACK]: null,
   [SOUND_KEYS.PLAYER_HIT]: null,
