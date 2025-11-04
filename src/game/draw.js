@@ -42,7 +42,7 @@ const getTexture = (textures, key) => {
   return textures?.[key] || null;
 };
 
-const drawTextureCircle = (ctx, texture, radius, { flipX = false } = {}) => {
+const drawTextureCircle = (ctx, texture, radius) => {
   if (!texture) return false;
   const img = texture.image;
   if (!img || !img.complete) return false;
@@ -50,14 +50,7 @@ const drawTextureCircle = (ctx, texture, radius, { flipX = false } = {}) => {
   const scale = (radius * 2) / maxSide;
   const w = img.width * scale;
   const h = img.height * scale;
-  if (flipX) {
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
-    ctx.restore();
-  } else {
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
-  }
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
   return true;
 };
 
@@ -217,7 +210,6 @@ export function draw(ctx, state, mode, bestScore) {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
   const villagers = state.villagers ?? [];
-  const cats = state.cats ?? [];
   const villagerCount = villagers.length;
   const textures = state.assets?.textures || {};
 
@@ -295,11 +287,7 @@ export function draw(ctx, state, mode, bestScore) {
   }
 
   // mines
-  const mineIdleTexture =
-    getTexture(textures, TEXTURE_KEYS.MINE_IDLE) || getTexture(textures, TEXTURE_KEYS.MINE);
-  const mineActiveTexture = getTexture(textures, TEXTURE_KEYS.MINE_ACTIVE);
-  const bombIdleTexture = getTexture(textures, TEXTURE_KEYS.BOMB_IDLE);
-  const bombActiveTexture = getTexture(textures, TEXTURE_KEYS.BOMB_ACTIVE);
+  const mineTexture = getTexture(textures, TEXTURE_KEYS.MINE);
   for (const m of state.mines) {
     ctx.save();
     ctx.translate(m.x, m.y);
@@ -307,27 +295,17 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.ellipse(0, 6, 14, 6, 0, 0, Math.PI * 2);
     ctx.fill();
-    const isBomb = m.kind === "bomb";
-    const isActive = m.state === "armed" || m.state === "countdown";
-    const radius = m.r ?? (isBomb ? 16 : 14);
-    const texture = isBomb
-      ? isActive
-        ? bombActiveTexture || bombIdleTexture
-        : bombIdleTexture
-      : isActive
-      ? mineActiveTexture || mineIdleTexture
-      : mineIdleTexture;
-    const drawnMine = drawTextureCircle(ctx, texture, radius);
+    const drawnMine = drawTextureCircle(ctx, mineTexture, 14);
     if (!drawnMine) {
-      ctx.fillStyle = isBomb ? "#f97316" : "#444";
+      ctx.fillStyle = "#444";
       ctx.beginPath();
-      ctx.arc(0, 0, radius * 0.85, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = isActive ? "#dc2626" : isBomb ? "#fb923c" : "#38bdf8";
-      ctx.beginPath();
-      ctx.arc(0, 0, radius * 0.35, 0, Math.PI * 2);
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.fillStyle = m.state === "armed" ? "#dc2626" : "#38bdf8";
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -394,9 +372,7 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.beginPath();
     ctx.ellipse(0, 7, 18, 9, 0, 0, Math.PI * 2);
     ctx.fill();
-    const drawnVillager = drawTextureCircle(ctx, villagerTexture, v.r, {
-      flipX: (v.spriteDir ?? -1) > 0,
-    });
+    const drawnVillager = drawTextureCircle(ctx, villagerTexture, v.r);
     if (!drawnVillager) {
       ctx.fillStyle = "#60a5fa";
       ctx.beginPath();
@@ -411,34 +387,6 @@ export function draw(ctx, state, mode, bestScore) {
     ctx.fillRect(-18, -v.r - 12, 36, 4);
     ctx.fillStyle = "#34d399";
     ctx.fillRect(-18, -v.r - 12, 36 * ratio, 4);
-    ctx.restore();
-  }
-
-  const catTexture = getTexture(textures, TEXTURE_KEYS.CAT);
-  for (const c of cats) {
-    ctx.save();
-    ctx.translate(c.x, c.y);
-    ctx.fillStyle = "rgba(0,0,0,0.08)";
-    ctx.beginPath();
-    ctx.ellipse(0, 6, 14, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-    const catDrawn = drawTextureCircle(ctx, catTexture, c.r, {
-      flipX: (c.spriteDir ?? -1) > 0,
-    });
-    if (!catDrawn) {
-      ctx.fillStyle = "#fef08a";
-      ctx.beginPath();
-      ctx.arc(0, 0, c.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#1f2937";
-      ctx.fillRect(-4, -3, 2, 2);
-      ctx.fillRect(2, -3, 2, 2);
-    }
-    const ratio = clamp((c.hp ?? c.maxHp) / (c.maxHp || 1), 0, 1);
-    ctx.fillStyle = "rgba(15,23,42,0.6)";
-    ctx.fillRect(-14, -c.r - 10, 28, 3);
-    ctx.fillStyle = "#facc15";
-    ctx.fillRect(-14, -c.r - 10, 28 * ratio, 3);
     ctx.restore();
   }
 
@@ -474,9 +422,7 @@ export function draw(ctx, state, mode, bestScore) {
     let alpha = 1;
     if (z.kind === "ghost") alpha = 0.55;
     ctx.globalAlpha = alpha;
-    const drewZombie = drawTextureCircle(ctx, zombieTexture, z.r, {
-      flipX: (z.spriteDir ?? -1) > 0,
-    });
+    const drewZombie = drawTextureCircle(ctx, zombieTexture, z.r);
     if (!drewZombie) {
       let bodyColor = "#7fb36a";
       if (z.kind === "fat") bodyColor = "#6b8f57";
@@ -681,26 +627,6 @@ export function draw(ctx, state, mode, bestScore) {
   ctx.fillText(`Патроны: ${p.ammo}`, w - 220, 56);
   ctx.fillText(`Мины: ${p.mines}`, w - 220, 72);
   ctx.fillText(`Жители: ${villagerCount}`, w - 220, 88);
-
-  const boss = state.zombies.find((z) => z.kind === "boss");
-  if (boss) {
-    const barW = Math.min(w * 0.52, 520);
-    const barX = w / 2 - barW / 2;
-    const bossRatio = clamp(boss.hp / (boss.maxHp || 1), 0, 1);
-    ctx.fillStyle = "rgba(15,23,42,0.75)";
-    ctx.fillRect(barX - 10, 10, barW + 20, 30);
-    ctx.fillStyle = "#fecaca";
-    ctx.fillRect(barX, 16, barW, 18);
-    ctx.fillStyle = "#dc2626";
-    ctx.fillRect(barX, 16, barW * bossRatio, 18);
-    ctx.strokeStyle = "rgba(0,0,0,0.3)";
-    ctx.strokeRect(barX, 16, barW, 18);
-    ctx.fillStyle = "#fee2e2";
-    ctx.font = "bold 14px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Здоровье босса", w / 2, 30);
-    ctx.textAlign = "left";
-  }
 
   // kills (без рекорда)
   ctx.fillStyle = "rgba(15,23,42,0.65)";
