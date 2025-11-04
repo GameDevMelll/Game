@@ -4,7 +4,7 @@ export const WORLD = { w: 2400, h: 1800 };
 // игрок
 export const PLAYER_SPEED = 230;
 export const PLAYER_DIAM = 34;
-export const PLAYER_MAX_HP = 100;
+export const PLAYER_MAX_HP = 100000;
 export const PLAYER_LEVEL_HP_BONUS = 200;
 export const PLAYER_MEDKIT_HEAL = 350;
 export const MELEE_RANGE = 55;
@@ -76,7 +76,7 @@ export const CAT_MAX_HP = (PLAYER_MAX_HP * 0.75) * 0.5;
 export const CAT_MAX_COUNT = 3;
 
 // боссы
-export const BOSS1_SPAWN_AT = 120; // секунда появления
+export const BOSS1_SPAWN_AT = 10; // секунда появления
 export const BOSS1_HP = 450;
 export const BOSS1_SPEED = 65;
 export const BOSS1_MELEE_DAMAGE = 65;
