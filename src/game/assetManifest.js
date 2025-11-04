@@ -23,6 +23,7 @@ import lomPng from "../assets/textures/lom.png";
 import gunPng from "../assets/textures/gun.png";
 import fogPng from "../assets/textures/fog.png";
 import bomPng from "../assets/textures/bom.png";
+import waaaPng from "../assets/textures/waaa.png";
 import bembMp3 from "../assets/music/bemb.mp3"; //
 
 export const TEXTURE_MANIFEST = {
