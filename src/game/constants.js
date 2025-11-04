@@ -2,10 +2,10 @@
 export const WORLD = { w: 2400, h: 1800 };
 
 // игрок
-export const PLAYER_SPEED = 230;
+export const PLAYER_SPEED = 2300;
 export const PLAYER_DIAM = 34;
-export const PLAYER_MAX_HP = 100;
-export const PLAYER_LEVEL_HP_BONUS = 12;
+export const PLAYER_MAX_HP = 10000;
+export const PLAYER_LEVEL_HP_BONUS = 12000;
 export const PLAYER_MEDKIT_HEAL = 35;
 export const MELEE_RANGE = 55;
 export const MELEE_DAMAGE = 25;
