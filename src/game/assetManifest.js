@@ -14,6 +14,7 @@ import pitchforkPng from "../assets/textures/pitchfork.png";
 import shieldPng from "../assets/textures/shield.png";
 import medkitIconPng from "../assets/textures/medkit_icon.png";
 import backPng from "../assets/textures/back2.png";
+import bembMp3 from "../assets/music/bemb.mp3"; //
 
 export const TEXTURE_MANIFEST = {
   [TEXTURE_KEYS.BACKGROUND]: backPng,
@@ -51,7 +52,7 @@ export const TEXTURE_MANIFEST = {
 
 export const SOUND_MANIFEST = {
   [SOUND_KEYS.AMBIENT]: null,
-  [SOUND_KEYS.MELODY]: null,
+  [SOUND_KEYS.MELODY]: bembMp3,
   [SOUND_KEYS.PLAYER_ATTACK]: null,
   [SOUND_KEYS.PLAYER_HIT]: null,
   [SOUND_KEYS.ENEMY_HIT]: null,
