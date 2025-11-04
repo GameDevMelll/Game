@@ -17,6 +17,7 @@ import {
 } from "./constants.js";
 
 const ZOMBIE_BASE_HP = 34;
+import { VILLAGER_MEDKIT_DROP_INTERVAL } from "./constants.js";
 
 export const makePlayer = () => ({
   x: WORLD.w / 2,
