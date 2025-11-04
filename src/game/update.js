@@ -31,6 +31,14 @@ import {
   BOSS_ATTACK_RANGE,
   BOSS_ATTACK_DAMAGE,
   ZOMBIE_BASE_SPEED,
+  INVENTORY_SLOTS,
+  PLAYER_INVULN_DURATION,
+  GRENADE_FUSE,
+  GRENADE_EXPLOSION_RADIUS,
+  GRENADE_THROW_SPEED,
+  CAT_SPAWN_FACTOR,
+  CAT_SPEED,
+  CAT_MAX_HP,
 } from "./constants.js";
 import { SOUND_KEYS } from "./assetKeys.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
@@ -41,6 +49,7 @@ import {
   makeBullet,
   makeVillager,
   makeBoss,
+  makeCat,
 } from "./entities.js";
 
 function circleRectCollides(cx, cy, cr, r) {
@@ -144,6 +153,105 @@ const playAudio = (audio, key) => {
   }
 };
 
+const STACKABLE_ITEMS = new Set(["mine", "medkit", "grenade", "shield"]);
+
+const ensurePlayerInventory = (player) => {
+  if (!Array.isArray(player.inventory)) {
+    player.inventory = Array.from({ length: INVENTORY_SLOTS }, () => null);
+  }
+  if (typeof player.selectedSlot !== "number") {
+    player.selectedSlot = 0;
+  }
+  if (!player.__inventoryMigrated) {
+    player.__inventoryMigrated = true;
+    const legacyWeapons = Array.isArray(player.weapons) ? player.weapons.slice() : [];
+    const legacyMines = player.mines || 0;
+    const legacyMedkits = player.medkits || 0;
+    player.weapons = [];
+    player.mines = 0;
+    player.medkits = 0;
+    for (const type of legacyWeapons) {
+      if (!type) continue;
+      addToInventory(player, type);
+    }
+    if (legacyMines) addToInventory(player, "mine", legacyMines);
+    if (legacyMedkits) addToInventory(player, "medkit", legacyMedkits);
+    if (!player.inventory[player.selectedSlot]) {
+      const firstFilled = player.inventory.findIndex(Boolean);
+      if (firstFilled !== -1) player.selectedSlot = firstFilled;
+    }
+  }
+  updateSelectedWeapon(player);
+};
+
+const updateSelectedWeapon = (player) => {
+  if (!Array.isArray(player.inventory)) {
+    player.inventory = Array.from({ length: INVENTORY_SLOTS }, () => null);
+  }
+  if (typeof player.selectedSlot !== "number") player.selectedSlot = 0;
+  if (player.selectedSlot < 0) player.selectedSlot = 0;
+  if (player.selectedSlot >= player.inventory.length) player.selectedSlot = player.inventory.length - 1;
+  if (player.selectedSlot < 0) player.selectedSlot = 0;
+  player.weapon = player.inventory[player.selectedSlot]?.type ?? null;
+  return player.weapon;
+};
+
+const addToInventory = (player, type, amount = 1) => {
+  ensurePlayerInventory(player);
+  const stackable = STACKABLE_ITEMS.has(type);
+  let slotIndex = -1;
+  if (stackable) {
+    slotIndex = player.inventory.findIndex((slot) => slot?.type === type);
+    if (slotIndex !== -1) {
+      const slot = player.inventory[slotIndex];
+      slot.count = (slot.count ?? 0) + amount;
+      updateSelectedWeapon(player);
+      return { success: true, slot: slotIndex, addedNew: false };
+    }
+  } else {
+    slotIndex = player.inventory.findIndex((slot) => slot?.type === type);
+    if (slotIndex !== -1) {
+      updateSelectedWeapon(player);
+      return { success: true, slot: slotIndex, addedNew: false };
+    }
+  }
+
+  const emptyIndex = player.inventory.findIndex((slot) => !slot);
+  if (emptyIndex === -1) {
+    return { success: false, slot: -1, addedNew: false };
+  }
+  player.inventory[emptyIndex] = stackable
+    ? { type, count: amount }
+    : { type };
+  if (!player.inventory[player.selectedSlot]) {
+    player.selectedSlot = emptyIndex;
+  }
+  updateSelectedWeapon(player);
+  return { success: true, slot: emptyIndex, addedNew: true };
+};
+
+const consumeFromSlot = (player, slotIndex, amount = 1) => {
+  ensurePlayerInventory(player);
+  if (slotIndex < 0 || slotIndex >= player.inventory.length) return false;
+  const slot = player.inventory[slotIndex];
+  if (!slot) return false;
+  if (STACKABLE_ITEMS.has(slot.type)) {
+    slot.count = (slot.count ?? 0) - amount;
+    if (slot.count <= 0) {
+      player.inventory[slotIndex] = null;
+    }
+  } else {
+    player.inventory[slotIndex] = null;
+  }
+  updateSelectedWeapon(player);
+  return true;
+};
+
+const getSelectedSlot = (player) => {
+  ensurePlayerInventory(player);
+  return player.inventory[player.selectedSlot] ?? null;
+};
+
 export function createInitialState(makeWalls, makePlayer, assets = null) {
   const player = makePlayer();
   const walls = makeWalls();
@@ -156,9 +264,12 @@ export function createInitialState(makeWalls, makePlayer, assets = null) {
     whites: [],
     enemyBullets: [],
     mines: [],
+    bombs: [],
+    grenades: [],
     explosions: [],
     slashes: [],
     villagers: [],
+    cats: [],
     walls,
     keys: {},
     mouse: { x: 0, y: 0, down: false },
@@ -169,6 +280,10 @@ export function createInitialState(makeWalls, makePlayer, assets = null) {
       min: WHITE_SPAWN_MIN,
     },
     villagerSpawn: { timer: 8, interval: VILLAGER_SPAWN_EVERY },
+    catSpawn: {
+      timer: VILLAGER_SPAWN_EVERY * CAT_SPAWN_FACTOR,
+      interval: VILLAGER_SPAWN_EVERY * CAT_SPAWN_FACTOR,
+    },
     kills: 0,
     dayTime: 0,
     time: 0,
@@ -183,12 +298,33 @@ export function createInitialState(makeWalls, makePlayer, assets = null) {
     makeItem(cx + 120, cy + 20, "bat"),
     makeItem(cx - 140, cy - 20, "pistol"),
     makeItem(cx + 40, cy - 130, "ammo"),
-    makeItem(cx + 10, cy + 180, "mine"),
-    makeItem(cx - 60, cy + 130, "medkit"),
     makeItem(cx + 180, cy - 40, "shotgun"),
-    makeItem(cx - 200, cy + 40, "glaive"),
+    makeItem(cx - 60, cy + 130, "medkit"),
+    makeItem(cx + 10, cy + 180, "mine"),
   ];
   state.items.push(...startingItems);
+
+  const scatterItem = (type) => {
+    for (let i = 0; i < 80; i++) {
+      const x = rand(WALL_THICKNESS + 80, WORLD.w - WALL_THICKNESS - 80);
+      const y = rand(WALL_THICKNESS + 80, WORLD.h - WALL_THICKNESS - 160);
+      let collides = false;
+      for (const wall of walls) {
+        if (circleRectCollides(x, y, 18, wall)) {
+          collides = true;
+          break;
+        }
+      }
+      if (!collides) {
+        state.items.push(makeItem(x, y, type));
+        return;
+      }
+    }
+  };
+
+  scatterItem("axe");
+  scatterItem("machinegun");
+  scatterItem("pitchfork");
 
   for (let i = 0; i < INITIAL_VILLAGERS; i++) {
     const offsetAng = (Math.PI * 2 * i) / INITIAL_VILLAGERS;
@@ -203,10 +339,17 @@ export function createInitialState(makeWalls, makePlayer, assets = null) {
 
 export function attack(state, queueFlash, audio) {
   const p = state.player;
+  ensurePlayerInventory(p);
   if (p.attackCD > 0) return;
-  if (!p.weapon) return;
+  const slot = getSelectedSlot(p);
+  if (!slot) return;
+  const current = slot.type;
+  if (!current) return;
+  p.weapon = current;
 
-  if (p.weapon === "bat") {
+ const consume = (amount = 1) => consumeFromSlot(p, p.selectedSlot, amount);
+
+  if (current === "bat") {
     let hitSomething = false;
     for (const z of state.zombies) {
       if (
@@ -226,14 +369,14 @@ export function attack(state, queueFlash, audio) {
         hitSomething = true;
       }
     }
-    p.attackCD = 0.5;
+    p.attackCD = 0.48;
     p.swing = 0.28;
     if (hitSomething) playAudio(audio, SOUND_KEYS.ENEMY_HIT);
     playAudio(audio, SOUND_KEYS.PLAYER_ATTACK);
     return;
   }
 
-  if (p.weapon === "glaive") {
+  if (current === "axe") {
     const arcRange = 150;
     const arcRange2 = arcRange * arcRange;
     const arcHalf = Math.PI / 3;
@@ -261,7 +404,7 @@ export function attack(state, queueFlash, audio) {
       maxLife: 0.28,
       radius: arcRange,
     });
-    p.attackCD = 0.72;
+    p.attackCD = 0.7;
     p.swing = 0.32;
     if (!hit) queueFlash && queueFlash("Мимо");
     if (hit) playAudio(audio, SOUND_KEYS.ENEMY_HIT);
@@ -269,7 +412,35 @@ export function attack(state, queueFlash, audio) {
     return;
   }
 
-  if (p.weapon === "pistol") {
+  if (current === "pitchfork") {
+    const range = 180;
+    const width = 26;
+    const damage = 84;
+    let hit = false;
+    const applyLine = (targets) => {
+      for (const t of targets) {
+        const dx = t.x - p.x;
+        const dy = t.y - p.y;
+        const forward = dx * Math.cos(p.facing) + dy * Math.sin(p.facing);
+        if (forward < -t.r || forward > range) continue;
+        const side = Math.abs(-dx * Math.sin(p.facing) + dy * Math.cos(p.facing));
+        if (side > width) continue;
+        if (!hasLineOfSight(p.x, p.y, t.x, t.y, state.walls)) continue;
+        t.hp -= damage;
+        hit = true;
+      }
+    };
+    applyLine(state.zombies);
+    applyLine(state.whites);
+    p.attackCD = 0.82;
+    p.swing = 0.25;
+    if (hit) playAudio(audio, SOUND_KEYS.ENEMY_HIT);
+    else queueFlash && queueFlash("Промах");
+    playAudio(audio, SOUND_KEYS.PLAYER_ATTACK);
+    return;
+  }
+
+  if (current === "pistol") {
     if (p.ammo > 0) {
       state.bullets.push(makeBullet(p.x, p.y, p.facing));
       p.ammo -= 1;
@@ -282,7 +453,7 @@ export function attack(state, queueFlash, audio) {
     return;
   }
 
-  if (p.weapon === "shotgun") {
+  if (current === "shotgun") {
     if (p.ammo >= 3) {
       const pellets = 6;
       for (let i = 0; i < pellets; i++) {
@@ -306,8 +477,33 @@ export function attack(state, queueFlash, audio) {
     return;
   }
 
-  if (p.weapon === "mine") {
-    if (p.mines > 0) {
+  if (current === "machinegun") {
+    const ammoCost = 3;
+    if (p.ammo >= ammoCost) {
+      const burst = 5;
+      for (let i = 0; i < burst; i++) {
+        const spread = rand(-0.28, 0.28);
+        state.bullets.push(
+          makeBullet(p.x, p.y, p.facing + spread, {
+            damage: 16,
+            speed: BULLET_SPEED * 0.95,
+            life: 0.4,
+            radius: 3,
+          })
+        );
+      }
+      p.ammo -= ammoCost;
+      p.attackCD = 0.09;
+      playAudio(audio, SOUND_KEYS.PLAYER_ATTACK);
+    } else {
+      queueFlash && queueFlash("Нужно больше патронов");
+      p.attackCD = 0.12;
+    }
+    return;
+  }
+
+  if (current === "mine") {
+    if ((slot.count ?? 0) > 0) {
       state.mines.push({
         x: p.x,
         y: p.y,
@@ -316,76 +512,123 @@ export function attack(state, queueFlash, audio) {
         timer: 3,
         id: Math.random().toString(36).slice(2),
       });
-      p.mines -= 1;
-      p.attackCD = 0.3;
-      queueFlash && queueFlash("Мина установлена (3с до активации)");
-      if (p.mines <= 0) {
-        if (p.weapons.length > 0) p.weapon = p.weapons[0];
-        else p.weapon = null;
-      }
+     consume(1);
+      p.attackCD = 0.32;
+      queueFlash && queueFlash("Мина установлена");
       playAudio(audio, SOUND_KEYS.PLAYER_ATTACK);
     } else {
       queueFlash && queueFlash("Нет мин");
       p.attackCD = 0.15;
     }
+     return;
+  }
+
+  if (current === "grenade") {
+    if ((slot.count ?? 0) > 0) {
+      state.grenades.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(p.facing) * GRENADE_THROW_SPEED,
+        vy: Math.sin(p.facing) * GRENADE_THROW_SPEED,
+        timer: GRENADE_FUSE,
+        radius: GRENADE_EXPLOSION_RADIUS,
+      });
+      consume(1);
+      p.attackCD = 0.26;
+      queueFlash && queueFlash("Граната брошена");
+      playAudio(audio, SOUND_KEYS.PLAYER_ATTACK);
+    } else {
+      queueFlash && queueFlash("Гранат нет");
+      p.attackCD = 0.15;
+    }
+    return;
+  }
+
+  if (current === "medkit") {
+    if (p.hp >= p.maxHp - 0.1) {
+      queueFlash && queueFlash("Полное здоровье");
+      p.attackCD = 0.2;
+      return;
+    }
+    if ((slot.count ?? 0) <= 0) {
+      queueFlash && queueFlash("Аптечек нет");
+      p.attackCD = 0.2;
+      return;
+    }
+    p.hp = clamp(p.hp + PLAYER_MEDKIT_HEAL, 0, p.maxHp);
+    consume(1);
+    p.attackCD = 0.32;
+    queueFlash && queueFlash(`HP: ${Math.round(p.hp)}/${Math.round(p.maxHp)}`);
+    playAudio(audio, SOUND_KEYS.MEDKIT);
+    return;
+  }
+
+  if (current === "shield") {
+    if ((slot.count ?? 0) <= 0) {
+      queueFlash && queueFlash("Щитов нет");
+      p.attackCD = 0.2;
+      return;
+    }
+    p.invulnerableTime = Math.max(p.invulnerableTime ?? 0, PLAYER_INVULN_DURATION);
+    consume(1);
+    p.attackCD = 0.2;
+    queueFlash && queueFlash("Щит активирован");
+    playAudio(audio, SOUND_KEYS.PLAYER_ATTACK);
+    return;
   }
 }
 
 export function tryPickup(state, queueFlash, audio) {
   const p = state.player;
+  ensurePlayerInventory(p);
   for (const it of state.items) {
-    if (dist2(p.x, p.y, it.x, it.y) < (p.r + PICKUP_RADIUS) ** 2) {
-      if (["bat", "pistol", "mine", "shotgun", "glaive"].includes(it.type) && !p.weapons.includes(it.type)) {
-        p.weapons.push(it.type);
-        if (!p.weapon) p.weapon = it.type;
+    if (dist2(p.x, p.y, it.x, it.y) >= (p.r + PICKUP_RADIUS) ** 2) continue;
+    let handled = false;
+    if (it.type === "ammo") {
+      p.ammo += 12;
+      queueFlash && queueFlash(`Патроны: ${p.ammo}`);
+      playAudio(audio, SOUND_KEYS.PICKUP);
+      handled = true;
+    } else {
+      const result = addToInventory(p, it.type, 1);
+      if (!result.success) {
+        queueFlash && queueFlash("Инвентарь заполнен");
+      } else {
+        const slot = p.inventory[result.slot];
+        const stackable = STACKABLE_ITEMS.has(it.type);
+        if (result.addedNew) {
+          p.selectedSlot = result.slot;
+        }
+        updateSelectedWeapon(p);
+        if (stackable) {
+          queueFlash && queueFlash(`${it.type}: ${slot?.count ?? 0}`);
+        } else {
+          queueFlash && queueFlash(`Подобрано: ${it.type}`);
+        }
+        if (it.type === "medkit") playAudio(audio, SOUND_KEYS.MEDKIT);
+        else playAudio(audio, SOUND_KEYS.PICKUP);
+        handled = true;
       }
-      if (it.type === "ammo") p.ammo += 12;
-      if (it.type === "medkit") {
-        p.medkits = (p.medkits || 0) + 1;
-      }
-      if (it.type === "mine") {
-        p.mines = (p.mines || 0) + 1;
-        p.weapon = "mine";
-      }
-      if (it.type === "shotgun") {
-        p.ammo += 9;
-        p.weapon = "shotgun";
-      }
-      if (it.type === "glaive") {
-        p.weapon = "glaive";
-      }
-      if (["bat", "pistol"].includes(it.type)) p.weapon = it.type;
+    }
+    if (handled) {
       state.items = state.items.filter((i) => i.id !== it.id);
-      if (queueFlash) {
-        if (it.type === "medkit") queueFlash(`Аптечка сохранена (${p.medkits})`);
-        else queueFlash(`Подобрано: ${it.type}`);
-      }
-      if (it.type === "medkit") playAudio(audio, SOUND_KEYS.MEDKIT);
-      else playAudio(audio, SOUND_KEYS.PICKUP);
       break;
     }
   }
 }
 
-export function useMedkit(state, queueFlash, audio) {
-  const p = state.player;
-  if (!p.medkits || p.medkits <= 0) {
-    queueFlash && queueFlash("Аптечек нет");
-    return false;
-  }
-  if (p.hp >= p.maxHp - 0.1) {
-    queueFlash && queueFlash("Полное здоровье");
-    return false;
-  }
-  p.medkits -= 1;
-  p.hp = clamp(p.hp + PLAYER_MEDKIT_HEAL, 0, p.maxHp);
-  queueFlash && queueFlash(`Аптечек осталось: ${p.medkits}`);
-  playAudio(audio, SOUND_KEYS.MEDKIT);
-  return true;
-}
-
 export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   const p = state.player;
+  ensurePlayerInventory(p);
+  if (!Array.isArray(state.cats)) state.cats = [];
+  if (!Array.isArray(state.grenades)) state.grenades = [];
+  if (!Array.isArray(state.bombs)) state.bombs = [];
+  if (!state.catSpawn) {
+    state.catSpawn = {
+      timer: VILLAGER_SPAWN_EVERY * CAT_SPAWN_FACTOR,
+      interval: VILLAGER_SPAWN_EVERY * CAT_SPAWN_FACTOR,
+    };
+  }
   if (!p.maxHp) p.maxHp = PLAYER_MAX_HP;
   p.maxHp = Math.max(p.maxHp, PLAYER_MAX_HP);
   p.hp = clamp(p.hp, 0, p.maxHp);
@@ -394,6 +637,9 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   if (state.dayTime >= DAY_NIGHT_CYCLE) state.dayTime -= DAY_NIGHT_CYCLE;
 
   const rareFactor = clamp(state.time / 240, 0, 1);
+
+  p.invulnerableTime = Math.max(0, (p.invulnerableTime ?? 0) - dt);
+  if (!p.facingDir) p.facingDir = "right";
 
   const grantXp = (amount) => {
     if (!Number.isFinite(amount) || amount <= 0) return;
@@ -443,7 +689,14 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   }
   p.x = nx;
   p.y = ny;
-
+  if (Math.abs(dx) > 0.01) {
+    p.facingDir = dx < 0 ? "left" : "right";
+  } else if (Math.cos(p.facing) < 0) {
+    p.facingDir = "left";
+  } else {
+    p.facingDir = "right";
+  }
+  
   // поворот на мышь
   if (canvas) {
     const rect = canvas.getBoundingClientRect();
@@ -493,8 +746,9 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   }
 
   if (!state.bossSpawned && state.time >= BOSS_SPAWN_AT) {
-    const bossSpot = getFreeSpawnNear(p.x, p.y, state.walls, 24);
-    state.zombies.push(makeBoss(bossSpot.x, bossSpot.y));
+    const centerX = WORLD.w / 2;
+    const centerY = WORLD.h / 2;
+    state.zombies.push(makeBoss(centerX, centerY));
     state.bossSpawned = true;
     queueFlash && queueFlash("Орк-босс ворвался в бой!");
   }
@@ -524,8 +778,17 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     state.villagerSpawn.timer = state.villagerSpawn.interval + rand(6, 14);
   }
 
+  state.catSpawn.timer -= dt;
+  if (state.catSpawn.timer <= 0 && state.cats.length < 3) {
+    const spot = getFreeSpawnNear(p.x, p.y, state.walls, 18);
+    state.cats.push(makeCat(spot.x, spot.y));
+    state.catSpawn.timer = state.catSpawn.interval * rand(0.8, 1.2);
+    queueFlash && queueFlash("Пушистый друг присоединился!");
+  }
+
   // движение жителей
   for (const v of state.villagers) {
+    const prevVX = v.x;
     v.wanderTimer = (v.wanderTimer ?? 0) - dt;
     let threat = null;
     let best = Infinity;
@@ -576,18 +839,78 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     }
 
     v.hp = clamp(v.hp, 0, v.maxHp);
+    if (Math.abs(v.x - prevVX) > 0.1) {
+      v.facingDir = v.x - prevVX < 0 ? "left" : "right";
+    }
+    v.medkitTimer = (v.medkitTimer ?? VILLAGER_MEDKIT_DROP_INTERVAL) - dt;
+    if (v.medkitTimer <= 0) {
+      state.items.push(makeItem(v.x + rand(-16, 16), v.y + rand(-16, 16), "medkit"));
+      v.medkitTimer = VILLAGER_MEDKIT_DROP_INTERVAL;
+    }
+  }
+
+  // кошки следуют за игроком
+  for (const cat of state.cats) {
+    const prevX = cat.x;
+    const prevY = cat.y;
+    cat.hp = clamp(cat.hp ?? CAT_MAX_HP, 0, cat.maxHp ?? CAT_MAX_HP);
+    const distToPlayer = Math.sqrt(dist2(cat.x, cat.y, p.x, p.y));
+    const followSpeed = distToPlayer > 60 ? CAT_SPEED : CAT_SPEED * 0.6;
+    const ang = angleBetween(cat.x, cat.y, p.x, p.y);
+    const tryMove = (nx, ny) => {
+      for (const wall of state.walls) {
+        if (circleRectCollides(nx, ny, cat.r, wall)) return false;
+      }
+      cat.x = nx;
+      cat.y = ny;
+      return true;
+    };
+    const nx = clamp(cat.x + Math.cos(ang) * followSpeed * dt, cat.r, WORLD.w - cat.r);
+    const ny = clamp(cat.y + Math.sin(ang) * followSpeed * dt, cat.r, WORLD.h - cat.r);
+    if (!tryMove(nx, ny)) {
+      const nxOnly = clamp(cat.x + Math.cos(ang) * followSpeed * dt, cat.r, WORLD.w - cat.r);
+      if (!tryMove(nxOnly, cat.y)) {
+        const nyOnly = clamp(cat.y + Math.sin(ang) * followSpeed * dt, cat.r, WORLD.h - cat.r);
+        tryMove(cat.x, nyOnly);
+      }
+    }
+    if (Math.abs(cat.x - prevX) > 0.05) {
+      cat.facingDir = cat.x - prevX < 0 ? "left" : "right";
+    } else if (Math.cos(p.facing) < 0) {
+      cat.facingDir = "left";
+    } else {
+      cat.facingDir = "right";
+    }
   }
 
   // движение зомби и приоритет целей
   const villagersToConvert = new Set();
+  const catsToCull = new Set();
+  const aliveCats = state.cats.filter((cat) => (cat.hp ?? CAT_MAX_HP) > 0);
   for (const z of state.zombies) {
     z.age += dt;
     let target = p;
     let targetType = "player";
     let bestDist2 = dist2(z.x, z.y, p.x, p.y);
+     if (aliveCats.length) {
+      let catTarget = null;
+      let catDist2 = Infinity;
+      for (const cat of aliveCats) {
+        const d = dist2(z.x, z.y, cat.x, cat.y);
+        if (d < catDist2) {
+          catDist2 = d;
+          catTarget = cat;
+        }
+      }
+      if (catTarget) {
+        target = catTarget;
+        targetType = "cat";
+        bestDist2 = catDist2;
+      }
+    }
     for (const villager of state.villagers) {
       const d = dist2(z.x, z.y, villager.x, villager.y);
-      if (d < bestDist2) {
+      if (targetType !== "cat" && d < bestDist2) {
         bestDist2 = d;
         target = villager;
         targetType = "villager";
@@ -670,14 +993,34 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       }
     }
 
+    let bomberFearDir = null;
+    if (z.kind === "bomber" && aliveCats.length) {
+      let closestCat = null;
+      let closestDist = Infinity;
+      for (const cat of aliveCats) {
+        const d = dist2(z.x, z.y, cat.x, cat.y);
+        if (d < closestDist) {
+          closestDist = d;
+          closestCat = cat;
+        }
+      }
+      if (closestCat) {
+        const dist = Math.sqrt(closestDist);
+        if (dist < 320) {
+          bomberFearDir = Math.atan2(z.y - closestCat.y, z.x - closestCat.x);
+          target = closestCat;
+          targetType = "cat";
+        }
+      }
+    }
+
     if (z.kind === "bomber" && z.mineTimer != null) {
       z.mineTimer -= dt;
       if (z.mineTimer <= 0) {
-        state.mines.push({
+         state.bombs.push({
           x: z.x,
           y: z.y,
-          r: 16,
-          state: "countdown",
+          r: 20,
           timer: BOMBER_COUNTDOWN,
           id: Math.random().toString(36).slice(2),
         });
@@ -687,6 +1030,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
 
     const prevX = z.x;
     const prevY = z.y;
+    if (bomberFearDir != null) {
+      moveAng = bomberFearDir;
+    }
+
     let zx = clamp(z.x + Math.cos(moveAng) * speed * dt, 10, WORLD.w - 10);
     let zy = clamp(z.y + Math.sin(moveAng) * speed * dt, 10, WORLD.h - 10);
 
@@ -731,6 +1078,9 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     }
     z.x = zx;
     z.y = zy;
+    if (Math.abs(z.x - prevX) > 0.1) {
+      z.facingDir = z.x - prevX < 0 ? "left" : "right";
+    }
 
     let damage = 20;
     if (z.behavior === "charge" && z.state === "charge") damage = 42;
@@ -745,6 +1095,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     const applyContact = (entity, type) => {
       const range = z.kind === "boss" ? BOSS_ATTACK_RANGE : z.r + entity.r + 2;
       if (dist2(entity.x, entity.y, z.x, z.y) < range * range) {
+        if (type === "player" && (p.invulnerableTime ?? 0) > 0) return;
         entity.hp -= damage * dt;
         if (type === "player") {
           if (entity.hp <= 0) {
@@ -761,7 +1112,12 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     for (const villager of state.villagers) {
       applyContact(villager, "villager");
     }
-
+    for (const cat of aliveCats) {
+      const beforeHp = cat.hp;
+      applyContact(cat, "cat");
+      if (cat.hp <= 0 && beforeHp > 0) catsToCull.add(cat);
+    }
+    
     for (const b of state.bullets) {
       const br = b.radius ?? 3;
       if (dist2(b.x, b.y, z.x, z.y) < (z.r + br) ** 2) {
@@ -774,6 +1130,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
 
   // стрелки
   for (const w of state.whites) {
+    const prevWX = w.x;
     w.age += dt;
     const angToP = angleBetween(w.x, w.y, p.x, p.y);
     const d2p = dist2(w.x, w.y, p.x, p.y);
@@ -803,6 +1160,14 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       }
     }
 
+    if (Math.abs(w.x - prevWX) > 0.05) {
+      w.facingDir = w.x - prevWX < 0 ? "left" : "right";
+    } else if (Math.cos(angToP) < 0) {
+      w.facingDir = "left";
+    } else {
+      w.facingDir = "right";
+    }
+    
     for (const b of state.bullets) {
       const br = b.radius ?? 3;
       if (dist2(b.x, b.y, w.x, w.y) < (w.r + br) ** 2) {
@@ -868,7 +1233,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
             if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
               villagersToConvert.add(villager);
           });
-          if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
+          state.cats.forEach((cat) => {
+            if (dist2(m.x, m.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) cat.hp = 0;
+          });
+          if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 && (p.invulnerableTime ?? 0) <= 0) {
             p.hp = 0;
             onDeath && onDeath();
           }
@@ -898,7 +1266,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
           }
         }
       }
-      if (!exploded && dist2(m.x, m.y, p.x, p.y) < (m.r + p.r) ** 2) {
+      if (!exploded && (p.invulnerableTime ?? 0) <= 0 && dist2(m.x, m.y, p.x, p.y) < (m.r + p.r) ** 2) {
         exploded = true;
       }
 
@@ -914,7 +1282,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
           if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
             villagersToConvert.add(villager);
         });
-        if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
+         state.cats.forEach((cat) => {
+          if (dist2(m.x, m.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) cat.hp = 0;
+        });
+        if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 && (p.invulnerableTime ?? 0) <= 0) {
           p.hp = 0;
           onDeath && onDeath();
         }
@@ -922,10 +1293,99 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       } else {
         keep.push(m);
       }
-    }
-    state.mines = keep;
-  }
+        }
+  state.mines = keep;
+}
 
+if (state.bombs.length) {
+  const keepBombs = [];
+  for (const bomb of state.bombs) {
+    bomb.timer -= dt;
+    if (bomb.timer <= 0) {
+      state.explosions.push({ x: bomb.x, y: bomb.y, r: 0, life: 0.35 });
+      state.zombies.forEach((z) => {
+        if (dist2(bomb.x, bomb.y, z.x, z.y) < MINE_EXPLOSION_RADIUS ** 2) z.hp = 0;
+      });
+      state.whites.forEach((w) => {
+        if (dist2(bomb.x, bomb.y, w.x, w.y) < MINE_EXPLOSION_RADIUS ** 2) w.hp = 0;
+      });
+      state.villagers.forEach((villager) => {
+        if (dist2(bomb.x, bomb.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
+          villagersToConvert.add(villager);
+      });
+      state.cats.forEach((cat) => {
+        if (dist2(bomb.x, bomb.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) {
+          cat.hp = 0;
+          catsToCull.add(cat);
+        }
+      });
+      if (dist2(bomb.x, bomb.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2 && (p.invulnerableTime ?? 0) <= 0) {
+        p.hp = 0;
+        onDeath && onDeath();
+      }
+      playAudio(audio, SOUND_KEYS.MINE_EXPLODE);
+    } else {
+      keepBombs.push(bomb);
+    }
+  }
+state.bombs = keepBombs;
+}
+
+if (state.grenades.length) {
+  const keepGrenades = [];
+  for (const g of state.grenades) {
+    g.timer -= dt;
+    g.vx *= 0.92;
+    g.vy *= 0.92;
+    g.x = clamp(g.x + g.vx * dt, 12, WORLD.w - 12);
+    g.y = clamp(g.y + g.vy * dt, 12, WORLD.h - 12);
+    let collided = false;
+    for (const wall of state.walls) {
+      if (circleRectCollides(g.x, g.y, 6, wall)) {
+        collided = true;
+        break;
+      }
+    }
+    if (collided) {
+      g.vx = 0;
+      g.vy = 0;
+    }
+    if (g.timer <= 0) {
+      state.explosions.push({ x: g.x, y: g.y, r: 0, life: 0.25 });
+      const radius2 = (g.radius ?? GRENADE_EXPLOSION_RADIUS) ** 2;
+      state.zombies.forEach((z) => {
+        if (dist2(g.x, g.y, z.x, z.y) < radius2) {
+          if (z.kind === "boss") z.hp -= 120;
+          else z.hp = 0;
+        }
+      });
+      state.whites.forEach((w) => {
+        if (dist2(g.x, g.y, w.x, w.y) < radius2) w.hp = 0;
+      });
+      state.villagers.forEach((villager) => {
+        if (dist2(g.x, g.y, villager.x, villager.y) < radius2) villagersToConvert.add(villager);
+      });
+      state.cats.forEach((cat) => {
+        if (dist2(g.x, g.y, cat.x, cat.y) < radius2) {
+          cat.hp = 0;
+          catsToCull.add(cat);
+        }
+      });
+      if (dist2(g.x, g.y, p.x, p.y) < radius2 && (p.invulnerableTime ?? 0) <= 0) {
+        p.hp -= PLAYER_MAX_HP * 0.4;
+        if (p.hp <= 0) {
+          p.hp = 0;
+          onDeath && onDeath();
+        }
+      }
+      playAudio(audio, SOUND_KEYS.MINE_EXPLODE);
+    } else {
+      keepGrenades.push(g);
+    }
+  }
+  state.grenades = keepGrenades;
+}
+  
   // взрывы
   if (state.explosions.length) {
     const keepEx = [];
@@ -958,12 +1418,14 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       }
     }
     if (eb.life > 0 && dist2(eb.x, eb.y, p.x, p.y) < (p.r + 3) ** 2) {
-      p.hp -= 36 * dt * 3;
-      eb.life = 0;
-      if (p.hp <= 0) {
-        p.hp = 0;
-        onDeath && onDeath();
+     if ((p.invulnerableTime ?? 0) <= 0) {
+        p.hp -= 36 * dt * 3;
+        if (p.hp <= 0) {
+          p.hp = 0;
+          onDeath && onDeath();
+        }
       }
+      eb.life = 0;
     }
     if (eb.life > 0) {
       for (const villager of state.villagers) {
@@ -971,6 +1433,16 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
           villager.hp -= 32;
           eb.life = 0;
           if (villager.hp <= 0) villagersToConvert.add(villager);
+          break;
+        }
+      }
+    }
+    if (eb.life > 0) {
+      for (const cat of state.cats) {
+        if (dist2(eb.x, eb.y, cat.x, cat.y) < (cat.r + 3) ** 2) {
+          cat.hp = (cat.hp ?? CAT_MAX_HP) - 32;
+          if (cat.hp <= 0) catsToCull.add(cat);
+          eb.life = 0;
           break;
         }
       }
@@ -1004,11 +1476,11 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       const drop = Math.random();
       const dropX = z.x + rand(-60, 60);
       const dropY = z.y + rand(-60, 60);
-      if (drop < 0.24) state.items.push(makeItem(dropX, dropY, "ammo"));
-      else if (drop < 0.3) state.items.push(makeItem(dropX, dropY, "medkit"));
-      else if (drop < 0.312) state.items.push(makeItem(dropX, dropY, "mine"));
-      else if (drop < 0.322) state.items.push(makeItem(dropX, dropY, "shotgun"));
-      else if (drop < 0.332) state.items.push(makeItem(dropX, dropY, "glaive"));
+      if (drop < 0.26) state.items.push(makeItem(dropX, dropY, "ammo"));
+      else if (drop < 0.33) state.items.push(makeItem(dropX, dropY, "medkit"));
+      else if (drop < 0.37) state.items.push(makeItem(dropX, dropY, "mine"));
+      else if (drop < 0.41) state.items.push(makeItem(dropX, dropY, "grenade"));
+      else if (drop < 0.45) state.items.push(makeItem(dropX, dropY, "shield"));
       playAudio(audio, SOUND_KEYS.ENEMY_DIE);
       continue;
     }
@@ -1026,8 +1498,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       rangedKills++;
       grantXp(w.xp ?? XP_PER_KILL + 6);
       const drop = Math.random();
-      if (drop < 0.18) state.items.push(makeItem(w.x + rand(-50, 50), w.y + rand(-50, 50), "ammo"));
-      else if (drop < 0.22) state.items.push(makeItem(w.x + rand(-40, 40), w.y + rand(-40, 40), "medkit"));
+      if (drop < 0.22) state.items.push(makeItem(w.x + rand(-50, 50), w.y + rand(-50, 50), "ammo"));
+      else if (drop < 0.27) state.items.push(makeItem(w.x + rand(-40, 40), w.y + rand(-40, 40), "medkit"));
+      else if (drop < 0.3) state.items.push(makeItem(w.x + rand(-40, 40), w.y + rand(-40, 40), "grenade"));
+      else if (drop < 0.33) state.items.push(makeItem(w.x + rand(-40, 40), w.y + rand(-40, 40), "shield"));
       playAudio(audio, SOUND_KEYS.ENEMY_DIE);
       continue;
     }
@@ -1036,6 +1510,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   }
   state.whites = keepWhites;
   if (rangedKills > 0) state.kills += rangedKills;
+
+  if (catsToCull.size) {
+    state.cats = state.cats.filter((cat) => !catsToCull.has(cat));
+  }
 
   if (state.zombies.length > ZOMBIE_HARD_CAP) state.zombies.length = ZOMBIE_HARD_CAP;
   if (state.whites.length > WHITE_HARD_CAP) state.whites.length = WHITE_HARD_CAP;
