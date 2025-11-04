@@ -27,6 +27,7 @@ export const SKELETON_HP = 18;
 export const GHOST_SPEED_MULT = 0.7;
 export const BOMBER_MINE_DELAY = 2.0;
 export const BOMBER_COUNTDOWN = 3.0;
+export const BOMBER_FEAR_RADIUS = 260;
 export const BOSS_ATTACK_RANGE = 140;
 export const BOSS_ATTACK_DAMAGE = 65;
 
@@ -61,6 +62,12 @@ export const XP_LEVEL_BASE = 110;
 export const INITIAL_VILLAGERS = 6;
 export const VILLAGER_SPAWN_EVERY = 30;
 export const VILLAGER_SPEED = 150;
+export const VILLAGER_MEDKIT_DROP_INTERVAL = 15;
+
+// питомцы
+export const CAT_SPAWN_INTERVAL = VILLAGER_SPAWN_EVERY * 6;
+export const CAT_SPEED = ZOMBIE_BASE_SPEED * 1.8;
+export const CAT_HP = PLAYER_MAX_HP * 0.375;
 
 // босс
 export const BOSS_SPAWN_AT = 120; // секунда появления

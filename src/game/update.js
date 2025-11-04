@@ -27,12 +27,16 @@ import {
   VILLAGER_SPAWN_EVERY,
   VILLAGER_SPEED,
   BOMBER_COUNTDOWN,
+  BOMBER_FEAR_RADIUS,
   BOSS_SPAWN_AT,
   BOSS_ATTACK_RANGE,
   BOSS_ATTACK_DAMAGE,
-  ZOMBIE_BASE_SPEED,
+  VILLAGER_MEDKIT_DROP_INTERVAL,
+  CAT_SPAWN_INTERVAL,
+  CAT_SPEED,
+  CAT_HP,
 } from "./constants.js";
-import { SOUND_KEYS } from "./assetKeys.js";
+import { SOUND_KEYS } from "./assets.js";
 import { clamp, rand, dist2, angleBetween } from "./utils.js";
 import {
   makeZombie,
@@ -41,6 +45,7 @@ import {
   makeBullet,
   makeVillager,
   makeBoss,
+  makeCat,
 } from "./entities.js";
 
 function circleRectCollides(cx, cy, cr, r) {
@@ -159,6 +164,7 @@ export function createInitialState(makeWalls, makePlayer, assets = null) {
     explosions: [],
     slashes: [],
     villagers: [],
+    cats: [],
     walls,
     keys: {},
     mouse: { x: 0, y: 0, down: false },
@@ -169,6 +175,7 @@ export function createInitialState(makeWalls, makePlayer, assets = null) {
       min: WHITE_SPAWN_MIN,
     },
     villagerSpawn: { timer: 8, interval: VILLAGER_SPAWN_EVERY },
+    catSpawn: { timer: CAT_SPAWN_INTERVAL, interval: CAT_SPAWN_INTERVAL },
     kills: 0,
     dayTime: 0,
     time: 0,
@@ -315,6 +322,7 @@ export function attack(state, queueFlash, audio) {
         state: "arming",
         timer: 3,
         id: Math.random().toString(36).slice(2),
+        kind: "mine",
       });
       p.mines -= 1;
       p.attackCD = 0.3;
@@ -422,6 +430,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   if (keys["KeyA"] || keys["ArrowLeft"]) dx -= 1;
   if (keys["KeyD"] || keys["ArrowRight"]) dx += 1;
   const len = Math.hypot(dx, dy) || 1;
+  const prevPx = p.x;
   let nx = clamp(p.x + (dx / len) * PLAYER_SPEED * dt, p.r, WORLD.w - p.r);
   let ny = clamp(p.y + (dy / len) * PLAYER_SPEED * dt, p.r, WORLD.h - p.r);
 
@@ -443,6 +452,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   }
   p.x = nx;
   p.y = ny;
+  const moveDelta = p.x - prevPx;
+  if (Math.abs(moveDelta) > 0.001) {
+    p.spriteDir = moveDelta > 0 ? 1 : -1;
+  }
 
   // поворот на мышь
   if (canvas) {
@@ -493,7 +506,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
   }
 
   if (!state.bossSpawned && state.time >= BOSS_SPAWN_AT) {
-    const bossSpot = getFreeSpawnNear(p.x, p.y, state.walls, 24);
+    const bossSpot = { x: WORLD.w / 2, y: WORLD.h / 2 };
     state.zombies.push(makeBoss(bossSpot.x, bossSpot.y));
     state.bossSpawned = true;
     queueFlash && queueFlash("Орк-босс ворвался в бой!");
@@ -524,9 +537,17 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     state.villagerSpawn.timer = state.villagerSpawn.interval + rand(6, 14);
   }
 
+  state.catSpawn.timer -= dt;
+  if (state.catSpawn.timer <= 0 && state.cats.length < Math.max(1, Math.floor((INITIAL_VILLAGERS + 3) / 3))) {
+    const spot = getFreeSpawnNear(p.x, p.y, state.walls, 18);
+    state.cats.push(makeCat(spot.x, spot.y));
+    state.catSpawn.timer = state.catSpawn.interval + rand(10, 18);
+  }
+
   // движение жителей
   for (const v of state.villagers) {
     v.wanderTimer = (v.wanderTimer ?? 0) - dt;
+    v.medkitTimer = (v.medkitTimer ?? VILLAGER_MEDKIT_DROP_INTERVAL) - dt;
     let threat = null;
     let best = Infinity;
     for (const z of state.zombies) {
@@ -575,11 +596,47 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       }
     }
 
+    if (v.medkitTimer <= 0) {
+      state.items.push(makeItem(v.x + rand(-10, 10), v.y + rand(-10, 10), "medkit"));
+      v.medkitTimer = VILLAGER_MEDKIT_DROP_INTERVAL;
+    }
+
+    if (Math.abs(v.x - (v.prevX ?? v.x)) > 0.001) {
+      v.spriteDir = v.x > (v.prevX ?? v.x) ? 1 : -1;
+    }
+    v.prevX = v.x;
+
     v.hp = clamp(v.hp, 0, v.maxHp);
+  }
+
+  for (const c of state.cats) {
+    const prevX = c.x;
+    const prevY = c.y;
+    const targetAng = angleBetween(c.x, c.y, p.x, p.y);
+    const cx = clamp(c.x + Math.cos(targetAng) * CAT_SPEED * dt, c.r, WORLD.w - c.r);
+    const cy = clamp(c.y + Math.sin(targetAng) * CAT_SPEED * dt, c.r, WORLD.h - c.r);
+
+    const attemptMove = (nx, ny) => {
+      for (const wall of state.walls) {
+        if (circleRectCollides(nx, ny, c.r, wall)) return false;
+      }
+      c.x = nx;
+      c.y = ny;
+      return true;
+    };
+
+    if (!attemptMove(cx, cy)) {
+      if (!attemptMove(cx, prevY)) attemptMove(prevX, cy);
+    }
+
+    const delta = c.x - prevX;
+    if (Math.abs(delta) > 0.001) c.spriteDir = delta > 0 ? 1 : -1;
+    c.hp = clamp(c.hp ?? CAT_HP, 0, c.maxHp ?? CAT_HP);
   }
 
   // движение зомби и приоритет целей
   const villagersToConvert = new Set();
+  const catsToRemove = new Set();
   for (const z of state.zombies) {
     z.age += dt;
     let target = p;
@@ -594,9 +651,30 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       }
     }
 
+    let nearestCat = null;
+    let nearestCatDist = Infinity;
+    for (const cat of state.cats) {
+      const d = dist2(z.x, z.y, cat.x, cat.y);
+      if (d < bestDist2) {
+        bestDist2 = d;
+        target = cat;
+        targetType = "cat";
+      }
+      if (d < nearestCatDist) {
+        nearestCatDist = d;
+        nearestCat = cat;
+      }
+    }
+
     const distToTarget = Math.sqrt(bestDist2);
     let moveAng = angleBetween(z.x, z.y, target.x, target.y);
     let speed = z.speed || ZOMBIE_BASE_SPEED;
+
+    if (z.kind === "bomber" && nearestCat && nearestCatDist < BOMBER_FEAR_RADIUS ** 2) {
+      moveAng = angleBetween(z.x, z.y, nearestCat.x, nearestCat.y) + Math.PI;
+      speed = (z.speed || ZOMBIE_BASE_SPEED) * 1.15;
+      targetType = "fear";
+    }
 
     if (!z.state) z.state = "idle";
 
@@ -680,6 +758,7 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
           state: "countdown",
           timer: BOMBER_COUNTDOWN,
           id: Math.random().toString(36).slice(2),
+          kind: "bomb",
         });
         z.mineTimer = null;
       }
@@ -731,6 +810,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     }
     z.x = zx;
     z.y = zy;
+    const zDelta = z.x - prevX;
+    if (Math.abs(zDelta) > 0.001) {
+      z.spriteDir = zDelta > 0 ? 1 : -1;
+    }
 
     let damage = 20;
     if (z.behavior === "charge" && z.state === "charge") damage = 42;
@@ -751,8 +834,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
             entity.hp = 0;
             onDeath && onDeath();
           }
-        } else if (entity.hp <= 0) {
+        } else if (type === "villager" && entity.hp <= 0) {
           villagersToConvert.add(entity);
+        } else if (type === "cat" && entity.hp <= 0) {
+          catsToRemove.add(entity);
         }
       }
     };
@@ -760,6 +845,9 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     applyContact(p, "player");
     for (const villager of state.villagers) {
       applyContact(villager, "villager");
+    }
+    for (const cat of state.cats) {
+      applyContact(cat, "cat");
     }
 
     for (const b of state.bullets) {
@@ -868,6 +956,12 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
             if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
               villagersToConvert.add(villager);
           });
+          state.cats.forEach((cat) => {
+            if (dist2(m.x, m.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) {
+              cat.hp = 0;
+              catsToRemove.add(cat);
+            }
+          });
           if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
             p.hp = 0;
             onDeath && onDeath();
@@ -913,6 +1007,12 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
         state.villagers.forEach((villager) => {
           if (dist2(m.x, m.y, villager.x, villager.y) < MINE_EXPLOSION_RADIUS ** 2)
             villagersToConvert.add(villager);
+        });
+        state.cats.forEach((cat) => {
+          if (dist2(m.x, m.y, cat.x, cat.y) < MINE_EXPLOSION_RADIUS ** 2) {
+            cat.hp = 0;
+            catsToRemove.add(cat);
+          }
         });
         if (dist2(m.x, m.y, p.x, p.y) < MINE_EXPLOSION_RADIUS ** 2) {
           p.hp = 0;
@@ -974,6 +1074,16 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
           break;
         }
       }
+      if (eb.life > 0) {
+        for (const cat of state.cats) {
+          if (dist2(eb.x, eb.y, cat.x, cat.y) < (cat.r + 3) ** 2) {
+            cat.hp -= 32;
+            eb.life = 0;
+            if (cat.hp <= 0) catsToRemove.add(cat);
+            break;
+          }
+        }
+      }
     }
   }
   state.enemyBullets = state.enemyBullets.filter((b) => b.life > 0);
@@ -994,6 +1104,10 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
     state.villagers = keepVillagers;
   }
 
+  if (catsToRemove.size) {
+    state.cats = state.cats.filter((cat) => !catsToRemove.has(cat));
+  }
+
   // очистка
   const newZ = [];
   let zombieKills = 0;
@@ -1005,10 +1119,8 @@ export function update(state, dt, { canvas, onDeath, queueFlash, audio }) {
       const dropX = z.x + rand(-60, 60);
       const dropY = z.y + rand(-60, 60);
       if (drop < 0.24) state.items.push(makeItem(dropX, dropY, "ammo"));
-      else if (drop < 0.3) state.items.push(makeItem(dropX, dropY, "medkit"));
-      else if (drop < 0.312) state.items.push(makeItem(dropX, dropY, "mine"));
-      else if (drop < 0.322) state.items.push(makeItem(dropX, dropY, "shotgun"));
-      else if (drop < 0.332) state.items.push(makeItem(dropX, dropY, "glaive"));
+      else if (drop < 0.32) state.items.push(makeItem(dropX, dropY, "medkit"));
+      else if (drop < 0.36) state.items.push(makeItem(dropX, dropY, "mine"));
       playAudio(audio, SOUND_KEYS.ENEMY_DIE);
       continue;
     }

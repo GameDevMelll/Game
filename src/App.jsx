@@ -202,7 +202,6 @@ export default function App() {
 
   audioApiRef.current.play = playSound;
 
-  // загружаем текстуры из манифеста при монтировании
   useEffect(() => {
     let cancelled = false;
     loadConfiguredTextures(TEXTURE_MANIFEST)
@@ -218,7 +217,6 @@ export default function App() {
     };
   }, []);
 
-  // закрываем аудио-контекст при размонтировании
   useEffect(() => {
     return () => {
       if (audioCtxRef.current) {
@@ -227,7 +225,6 @@ export default function App() {
     };
   }, []);
 
-  // включаем аудио при старте игры
   useEffect(() => {
     if (mode === "play" && running) ensureAudio();
   }, [mode, running]);
@@ -344,7 +341,6 @@ export default function App() {
 
       draw(ctx, stateRef.current, mode, best);
 
-      // динамика аудио
       if (audioCtxRef.current && ambientGainRef.current) {
         const ctxTime = audioCtxRef.current.currentTime;
         const hostiles =
@@ -352,17 +348,12 @@ export default function App() {
           ((stateRef.current?.whites?.length || 0) * 1.5);
         const intensity = Math.min(1, hostiles / 60);
         const active = mode === "play" && running;
-
-        // фон
         const targetAmb = active ? 0.06 + intensity * 0.2 : 0.02;
         ambientGainRef.current.gain.setTargetAtTime(targetAmb, ctxTime, 0.5);
-
-        // мелодия
         if (melodyRef.current) {
           const melState = melodyStateRef.current;
           const melodyControl = melodyRef.current;
           melState.timer += dt;
-
           if (melodyControl.type === "default" && melodyControl.node) {
             if (melState.timer >= 2.4) {
               melState.timer = 0;
@@ -373,12 +364,8 @@ export default function App() {
           } else {
             melState.timer = 0;
           }
-
           const targetMel = active ? 0.02 + intensity * 0.12 : 0.0;
-          // безопасно: вызываем только если это реальный GainNode
-          try {
-            melodyControl?.gain?.setTargetAtTime?.(targetMel, ctxTime, 0.4);
-          } catch {}
+          melodyControl.gain.setTargetAtTime(targetMel, ctxTime, 0.4);
         }
       }
 
